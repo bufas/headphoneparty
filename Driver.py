@@ -1,6 +1,9 @@
+from xmlrpc.client import ServerProxy
+import subprocess
 import random
 import math
 import tkinter as tk
+import time
 
 
 class SimpleTest(tk.Frame):
@@ -103,10 +106,24 @@ class SimpleTest(tk.Frame):
         self.canvas.pack()
 
 # Run the test
-colors = ['black', 'magenta', 'red', 'blue', 'green', 'gray', 'orange', 'DeepPink', 'Lime', 'Teal', 'Tan', 'Navy']
+colors = ['black', 'magenta', 'red', 'blue', 'green', 'gray', 'orange', 'DeepPink', 'Tan', 'Navy']
 
 st = SimpleTest()
 for color in colors:
+    port = random.randrange(4000, 60000)
+    cmd = "python -u Peer.py %s" \
+            % (port)
+    process = subprocess.Popen(cmd,
+                       shell=True,
+                       stdin=subprocess.PIPE,
+                       stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE)
+
+    time.sleep(0.01)
+
+    s = ServerProxy('http://127.0.0.1:' + str(port))
+    print(s.add(2,3))
+
     st.addPeer(color)
 st.drawWorld()
 st.mainloop()
