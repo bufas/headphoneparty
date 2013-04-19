@@ -5,7 +5,10 @@ import tkinter as tk
 
 class SimpleTest(tk.Frame):
     """The purpose of the class is to emulate a physical space to test range and effect of wireless communication.
-    Average walking speed will be 1.4, which corresponds to 5 km/h. Maximal speed in this configuration is 7.12km/h"""
+    Average walking speed will be 1.4, which corresponds to 5 km/h. Maximal speed in this configuration is 7.12km/h
+
+    Kristian was here.
+    """
 
     GUI_SCALE = 5
     TOP_SPEED = 140
@@ -103,7 +106,7 @@ class SimpleTest(tk.Frame):
         self.canvas.pack()
 
 # Run the test
-colors = ['black', 'magenta', 'red', 'blue', 'green', 'gray', 'orange', 'DeepPink', 'Lime', 'Teal', 'Tan', 'Navy']
+colors = ['black', 'magenta', 'red', 'blue', 'green', 'gray', 'orange', 'DeepPink',  'Tan', 'Navy']
 
 st = SimpleTest()
 for color in colors:
