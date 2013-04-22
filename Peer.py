@@ -39,7 +39,6 @@ class Peer(object):
         s.ForwardMessage(self.name, msg)
 
     def _main_loop(self):
-        sys.stdin = codecs.getwriter('utf-8')(sys.stdin)
         while True:
             cmd = sys.stdin.readline().strip()
             logging.debug(self.name + ": Read command: %s" % cmd)

@@ -120,6 +120,7 @@ class Peer(object):
 
     def write_stdin(self, msg):
         self.process.stdin.write(bytes(msg, "utf-8"))
+        self.process.stdin.flush()
 
 
 class Visualizer(tk.Frame):
