@@ -7,6 +7,8 @@ import tkinter as tk
 import unittest
 import time
 import threading
+from threading import Condition
+from threading import Lock
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
 import socketserver
@@ -95,7 +97,7 @@ class Peer(object):
                 stopThread = True
                 return line
             if "SAY_TIMEOUT" in line:
-                raise subprocess.TimeoutExpired
+                raise subprocess.TimeoutExpired(msg, timeout)
 
     def expect_ready(self):
         self.expect_output("ready")
@@ -243,17 +245,32 @@ class PeerController():
         return peersInRange
 
 class Router:
-    def __init__(self, host, port, peers, peer_controller):
+    def __init__(self, host, port, peers, peer_controller, useTicks):
         self.host, self.port = host, port
         self.peer_controller = peer_controller
         self.peers = peers
+        self.msg_queue = []
+        self.msg_lock = Lock()
+        self.msg_cond = Condition(self.msg_lock)
+        self.useTicks = useTicks
+        self.peer_can_send = {}
+
+        # Init for ticks
+        for peer in self.peers:
+            self.peer_can_send[peer.name] = 0
 
     def _server(self):
         print('Starting driver on: %s:%s' % (self.host, self.port))
         try:
             self.rpc_server.serve_forever()
-        finally:
-            self.rpc_server.close()
+        except ValueError: # Thrown upon exit :(
+            pass
+
+    def tick(self, num_msgs):
+        with self.msg_lock:
+            for peer in self.peers:
+                self.peer_can_send[peer.name] = num_msgs
+            self.msg_cond.notify()
 
     def start(self):
 
@@ -269,6 +286,13 @@ class Router:
         server_thread.setDaemon(True) # Don't wait for server thread to exit.
         server_thread.start()
 
+        queue_thread = threading.Thread(name="queue", target=self._queue_handler)
+        queue_thread.setDaemon(True) # Don't wait for server thread to exit.
+        queue_thread.start()
+
+    def shutdown(self):
+        self.rpc_server.server_close()
+
     def ForwardMessage(self, peer_name, msg):
         #Find peer
         #TODO: IMPROVE
@@ -277,10 +301,25 @@ class Router:
             if peer.name == peer_name:
                 sender_peer = peer
                 break
-        if sender_peer:
-            thread = threading.Thread(name="forward", target=self._do_forward_msg, args=[sender_peer, msg])
-            thread.start()
+        self.msg_lock.acquire()
+        self.msg_queue.append((sender_peer,msg))
+        self.msg_cond.notify()
+        self.msg_lock.release()
         return ''
+
+    def _queue_handler(self):
+        while True:
+            with self.msg_lock:
+                if len(self.msg_queue) == 0:
+                    self.msg_cond.wait()
+                for i in range(len(self.msg_queue)):
+                    (sender_peer, msg) = self.msg_queue[i]
+                    if self.useTicks == False or (self.peer_can_send[sender_peer.name] and self.peer_can_send[sender_peer.name] > 0):
+                        self.msg_queue.pop(i)
+                        if self.useTicks:
+                              self.peer_can_send[sender_peer.name] -= 1
+                        self._do_forward_msg(sender_peer, msg)
+                        break
 
     def _do_forward_msg(self, sender_peer, msg):
         peersInRange = self.peer_controller.findPeersInRange(sender_peer)
@@ -300,19 +339,22 @@ class P2PTestCase(unittest.TestCase):
     MAX_SPEED_CHANGE = 50
     RADIO_RANGE = 500
     WORLD_SIZE = {'width': 2000, 'height': 2000}  # in centimeters
+    USETICKS = False
 
     def setUp(self):
         self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8400 + i)
                      for i in range(self.__class__.NO_OF_PEERS)]
         self.peer_controller = PeerController(self.peers, self.WORLD_SIZE, self.TOP_SPEED, self.MAX_SPEED_CHANGE, self.RADIO_RANGE)
         #Start router
-        router = Router(DRIVERHOST, DRIVERPORT, self.peers, self.peer_controller)
-        router.start()
+        self.router = Router(DRIVERHOST, DRIVERPORT, self.peers, self.peer_controller, self.USETICKS)
+        self.router.start()
         self.ensure_peers_ready(self.peers)
 
         if self.VISUALIZE:
             self.visualizer = Visualizer(self.peers, self.peer_controller)
 
+    def tick(self, num_msgs = 1):
+        self.router.tick(num_msgs)
 
     def visualize(self, block = True):
         if block:
@@ -329,6 +371,7 @@ class P2PTestCase(unittest.TestCase):
     def tearDown(self):
         for peer in self.peers:
             peer.kill()
+        self.router.shutdown()
 
     def assertContains(self, msg, msg_part):
         try:

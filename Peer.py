@@ -23,7 +23,9 @@ class Peer(object):
         self.driverHost, self.driverPort = driverHost, driverPort
 
     def ReceiveMsg(self, peer_name, msg):
-        logging.debug(self.name + ": Got msg from peer " + peer_name + ": " + msg)
+        txt = self.name + ": GOTMSG from peer " + peer_name + ": " + msg
+        logging.debug(txt)
+        print(txt)
         return ''
 
     def _send_msg(self, msg):
