@@ -11,7 +11,7 @@ class SimpleVisualTest(P2PTestCase):
     @unittest.skip("deactivated")
     def test_visual(self):
         self.peers[0].write_stdin("sendmsg testmessage\n")
-        time.sleep(1)
+        self.wait_nw_idle()
         self.visualize(False)
         for peer in self.peers:
             peer.communicate("q \n")
@@ -55,12 +55,12 @@ class TickTest(P2PTestCase):
         for peer in self.peers:
             peer.communicate("q \n")
 
-class SimpleVisualTest(P2PTestCase):
+class SimpleVisualPermanentTest(P2PTestCase):
 
     NO_OF_PEERS = 10
     VISUALIZE = True
 
     @unittest.skip("deactivated")
-    def test_visual(self):
+    def test_permanent_visual(self):
         for peer in self.peers:
             peer.communicate("q \n")

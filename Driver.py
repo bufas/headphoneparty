@@ -254,6 +254,7 @@ class Router:
         self.msg_cond = Condition(self.msg_lock)
         self.useTicks = useTicks
         self.peer_can_send = {}
+        self.queue_was_empty = True
 
         # Init for ticks
         for peer in self.peers:
@@ -271,6 +272,19 @@ class Router:
             for peer in self.peers:
                 self.peer_can_send[peer.name] = num_msgs
             self.msg_cond.notify()
+
+    def wait_queue_empty(self):
+        # Check twice with small interval
+        while True:
+            with self.msg_lock:
+                if len(self.msg_queue) > 0:
+                    self.msg_cond.wait()
+                else:
+                    if self.queue_was_empty:
+                        break
+                    else:
+                        self.queue_was_empty = True
+                        time.sleep(0.5)
 
     def start(self):
 
@@ -303,6 +317,7 @@ class Router:
                 break
         self.msg_lock.acquire()
         self.msg_queue.append((sender_peer,msg))
+        self.queue_was_empty = False
         self.msg_cond.notify()
         self.msg_lock.release()
         return ''
@@ -353,6 +368,11 @@ class P2PTestCase(unittest.TestCase):
         if self.VISUALIZE:
             self.visualizer = Visualizer(self.peers, self.peer_controller)
 
+    def tearDown(self):
+        for peer in self.peers:
+            peer.kill()
+        self.router.shutdown()
+
     def tick(self, num_msgs = 1):
         self.router.tick(num_msgs)
 
@@ -366,12 +386,8 @@ class P2PTestCase(unittest.TestCase):
     def _do_visualize(self):
         self.visualizer = Visualizer(self.peers, self.peer_controller)
 
-
-
-    def tearDown(self):
-        for peer in self.peers:
-            peer.kill()
-        self.router.shutdown()
+    def wait_nw_idle(self):
+        self.router.wait_queue_empty()
 
     def assertContains(self, msg, msg_part):
         try:
