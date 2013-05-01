@@ -30,14 +30,14 @@ VERBOSE = True
 DRIVERHOST = "127.0.0.1"
 DRIVERPORT = 8300
 
-class Peer(object):
+class PeerHandler(object):
     def __init__(self, name, host, port):
         self.name, self.host, self.port = name, host, port
         self.x, self.y, self.vecX, self.vecY = None, None, None, None
         self.color = None
         self.guiID = None
 
-        cmd = "python -u peer.py %s %s %s %s %s" \
+        cmd = "python -u Peer.py %s %s %s %s %s" \
             % (name, host, port, DRIVERHOST, DRIVERPORT)
         if VERBOSE: # Do not pipe stderr.
             self.process = subprocess.Popen(cmd,
@@ -308,7 +308,7 @@ class Router:
     def shutdown(self):
         self.rpc_server.server_close()
 
-    def ForwardMessage(self, peer_name, msg):
+    def ForwardMessage(self, peer_name, msgtype, argdict):
         #Find peer
         #TODO: IMPROVE
         sender_peer = None
@@ -317,7 +317,7 @@ class Router:
                 sender_peer = peer
                 break
         self.msg_lock.acquire()
-        self.msg_queue.append((sender_peer,msg))
+        self.msg_queue.append((sender_peer,msgtype,argdict))
         self.queue_was_empty = False
         self.msg_cond.notify()
         self.msg_lock.release()
@@ -329,20 +329,20 @@ class Router:
                 if len(self.msg_queue) == 0:
                     self.msg_cond.wait()
                 for i in range(len(self.msg_queue)):
-                    (sender_peer, msg) = self.msg_queue[i]
+                    (sender_peer, msgtype, argdict) = self.msg_queue[i]
                     if self.useTicks == False or (self.peer_can_send[sender_peer.name] and self.peer_can_send[sender_peer.name] > 0):
                         self.msg_queue.pop(i)
                         if self.useTicks:
                               self.peer_can_send[sender_peer.name] -= 1
-                        self._do_forward_msg(sender_peer, msg)
+                        self._do_forward_msg(sender_peer, msgtype, argdict)
                         break
 
-    def _do_forward_msg(self, sender_peer, msg):
+    def _do_forward_msg(self, sender_peer, msgtype, argdict):
         peersInRange = self.peer_controller.findPeersInRange(sender_peer)
         for peer in peersInRange:
             if peer != sender_peer:
                 s = ServerProxy('http://' + peer.adr())
-                s.ReceiveMsg(sender_peer.name, str(msg))
+                s.ReceiveMsg(sender_peer.name, str(msgtype), argdict)
 
 
 class P2PTestCase(unittest.TestCase):
@@ -405,7 +405,7 @@ class P2PTestCase(unittest.TestCase):
                                  % (msg, msg_part))
 
     def create_peer(self, name, host, port):
-        peer = Peer(name, host, port)
+        peer = PeerHandler(name, host, port)
 
         if peer.process.returncode is not None:
             raise Exception("Peer " + peer.name + " quit immediately ")

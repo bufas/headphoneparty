@@ -23,20 +23,26 @@ class Peer(object):
         self.name, self.host, self.port = name, host, port
         self.driverHost, self.driverPort = driverHost, driverPort
 
-    def ReceiveMsg(self, peer_name, msg):
-        txt = self.name + ": GOTMSG from peer " + peer_name + ": " + msg
+    def ReceiveMsg(self, sender_peer_name, msgtype, argdict):
+        # For some reason argdict values has turned into lists
+        txt = self.name + ": GOTMSG of type " + msgtype + " from peer " + sender_peer_name + ": " + str(argdict['msg'])
         logging.debug(txt)
         print(txt)
+        if msgtype == "TXTMSG":
+            self._handleTextMessage(sender_peer_name, str(argdict['msg']))
         return ''
 
-    def _send_msg(self, msg):
-        thread = threading.Thread(name="forward", target=self._do_send_msg, args=[msg])
+    def _handleTextMessage(self, sender_peer_name, msg):
+        logging.debug("Handling Text Message")
+
+    def _send_msg(self, msgtype, argdict):
+        thread = threading.Thread(name="forward", target=self._do_send_msg, args=[msgtype, argdict])
         thread.start()
         return ''
 
-    def _do_send_msg(self, msg):
+    def _do_send_msg(self, msgtype, argdict):
         s = ServerProxy('http://' + self.driverHost + ':' + str(self.driverPort))
-        s.ForwardMessage(self.name, msg)
+        s.ForwardMessage(self.name, msgtype, argdict)
 
     def _main_loop(self):
         while True:
@@ -47,7 +53,7 @@ class Peer(object):
             match = re.match(r'sendmsg (\S+)', cmd)
             if match:
                 msg = match.group(1),
-                self._send_msg(msg)
+                self._send_msg("TXTMSG", {'msg': msg})
                 continue
             if "say_timeout" == cmd:
                 print ("SAY_TIMEOUT") # Used for test readline timeout
