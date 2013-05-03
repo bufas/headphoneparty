@@ -72,22 +72,15 @@ class Peer(object):
             self.rpc_server.close()
 
 # If executed from cmd line.
-# TODO merge this with Driver.py
 if __name__ == '__main__':
     # Setup logging to stderr.
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)-10s) %(message)s')
 
-    name = 'abe'
-    host = '127.0.0.1'
-    port = 61000
-    driverHost = '127.0.0.1'
-    driverPort = 6300
+    name = sys.argv[1]
+    host = sys.argv[2]
+    port = int(sys.argv[3])
+    driverHost = sys.argv[4]
+    driverPort = int(sys.argv[5])
 
-    # name = sys.argv[1]
-    # host = sys.argv[2]
-    # port = int(sys.argv[3])
-    # driverHost = sys.argv[4]
-    # driverPort = int(sys.argv[5])
-    #
     peer = Peer(name, host, port, driverHost, driverPort)
     peer.start()
