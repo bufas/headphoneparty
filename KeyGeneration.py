@@ -3,7 +3,7 @@ from Crypto.PublicKey import RSA
 
 
 class Generator():
-    BIT_MASK = 0b0000001  # Write 1 on the positions you want to be 0 in the hash
+    BIT_MASK = 0b0000111  # Write 1 on the positions you want to be 0 in the hash
     key = None
 
     def __init__(self):
@@ -57,6 +57,7 @@ class Generator():
 
 # Test
 # print('expected output: True, True, True, False, False, True')
+# TODO put this into test.py
 # g = Generator()
 # key1 = RSA.generate(2048)
 # key1Public = key1.publickey()
