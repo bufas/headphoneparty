@@ -26,8 +26,6 @@ class Peer(object):
         self.msg_ids_seen_nextindex = 0
         self.msg_ids_seen_lock = Lock()
 
-
-
     def start(self):
         # Create server
         self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler)
@@ -95,11 +93,25 @@ class Peer(object):
         added = False
         for playlistitem in self.playlist:
             if playlistitem['song'] == song:
-                playlistitem['votes'].push_back({'peer_name': peer_name, 'vote': vote})
+                if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
+                    # The vote is not in the list, add it
+                    playlistitem['votes'].push_back({'peer_name': peer_name, 'vote': vote})
                 added = True
                 break
         if not added:
             self.playlist.push_back({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
+
+    def _udpatePlaylist(self, recievedPlaylist, peerName):
+        for song in recievedPlaylist:
+            # Authenticate votes
+            for vote in song['votes']:
+                if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(song['song'], vote['vote'], vote['pk']):
+                    # Vote is authentic, add it
+                    self._addVote(song['song'], peerName, vote)
+                else:
+                    # This guy is a cheater
+                    # TODO sound the alarm
+                    pass
 
     def _sign(self, obj):
         #TODO
