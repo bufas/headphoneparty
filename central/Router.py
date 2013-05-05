@@ -62,7 +62,7 @@ class Router:
     def shutdown(self):
         self.rpc_server.server_close()
 
-    def forwardMessage(self, peer_name, msgtype, argdict):
+    def forwardMessage(self, msg_id, peer_name, msgtype, argdict):
         #Find peer
         #TODO: IMPROVE
         sender_peer = None
@@ -71,7 +71,7 @@ class Router:
                 sender_peer = peer
                 break
         self.msg_lock.acquire()
-        self.msg_queue.append((sender_peer, msgtype, argdict))
+        self.msg_queue.append((msg_id, sender_peer, msgtype, argdict))
         self.queue_was_empty = False
         self.msg_cond.notify()
         self.msg_lock.release()
@@ -90,18 +90,18 @@ class Router:
                 if len(self.msg_queue) == 0:
                     self.msg_cond.wait()
                 for i in range(len(self.msg_queue)):
-                    (sender_peer, msgtype, argdict) = self.msg_queue[i]
+                    (msg_id, sender_peer, msgtype, argdict) = self.msg_queue[i]
                     if not self.useTicks or (self.peer_can_send[sender_peer.name]
                                              and self.peer_can_send[sender_peer.name] > 0):
                         self.msg_queue.pop(i)
                         if self.useTicks:
                             self.peer_can_send[sender_peer.name] -= 1
-                        self._do_forward_msg(sender_peer, msgtype, argdict)
+                        self._do_forward_msg(msg_id, sender_peer, msgtype, argdict)
                         break
 
-    def _do_forward_msg(self, sender_peer, msgtype, argdict):
+    def _do_forward_msg(self, msg_id, sender_peer, msgtype, argdict):
         peersInRange = self.peer_controller.findPeersInRange(sender_peer)
         for peer in peersInRange:
             if peer != sender_peer:
                 serverProxy = ServerProxy('http://' + peer.adr())
-                serverProxy.ReceiveMsg(sender_peer.name, str(msgtype), argdict)
+                serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)

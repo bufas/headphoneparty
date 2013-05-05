@@ -18,7 +18,7 @@ class P2PTestCase(unittest.TestCase):
     USE_TICKS = False
 
     def setUp(self):
-        self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8400 + i) for i in range(self.__class__.NO_OF_PEERS)]
+        self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.__class__.NO_OF_PEERS)]
         self.peer_controller = PeerController(self.peers,
                                               self.WORLD_SIZE,
                                               self.TOP_SPEED,
@@ -139,5 +139,17 @@ class SimpleVisualPermanentTest(P2PTestCase):
 
     @unittest.skip("deactivated")
     def test_permanent_visual(self):
+        for peer in self.peers:
+            peer.communicate("q \n")
+
+
+class JoinTests(P2PTestCase):
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 999999999
+    USE_TICKS = False
+
+    def test_join(self):
+        self.peers[0].write_to_stdin("join\n")
+        self.peers[0].expect_output("GOT PLAYLIST", 2)
         for peer in self.peers:
             peer.communicate("q \n")
