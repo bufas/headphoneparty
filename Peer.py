@@ -7,7 +7,11 @@ import threading
 from KeyDistributer import KeyDistributer
 from threading import Lock
 from datetime import datetime
+import time
 
+
+NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
+PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life
 
 class Peer(object):
     def __init__(self, name, host, port, driverHost, driverPort):
@@ -26,6 +30,13 @@ class Peer(object):
         self.msg_ids_seen_nextindex = 0
         self.msg_ids_seen_lock = Lock()
 
+        self.playlist_request_id = None
+        self.playlists_received = 0
+
+        self.hasJoined = False
+
+
+
     def start(self):
         # Create server
         self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler)
@@ -43,7 +54,18 @@ class Peer(object):
         self._main_loop()
 
     def _join(self):
-        self._send_msg("GETLIST", {})
+        self.playlists_received = 0
+        self.playlist_request_id = self._gen_msg_id()
+        self._send_msg("GETLIST", {'request_id': self.playlist_request_id})
+        # Start join timeout
+        join_timeout_thread = threading.Thread(name="join", target=self._join_timeout)
+        join_timeout_thread.setDaemon(True)  # Don't wait for thread to exit.
+        join_timeout_thread.start()
+
+    def _join_timeout(self):
+        time.sleep(PLAYLIST_RECV_TIMEOUT_ON_JOIN)
+        if not self.hasJoined:
+            self._join() # Retry
 
     def ReceiveMsg(self, msg_id, sender_peer_name, msgtype, argdict):
         # For some reason argdict values has turned into lists
@@ -60,12 +82,13 @@ class Peer(object):
                 self._handleVote(sender_peer_name, str(argdict['song']), str(argdict['vote']), str(argdict['pk']), str(argdict['pksign']))
             elif msgtype == "GETLIST":
                 logging.debug("GETLIST!")
-                self._send_playlist(msg_id)
+                self._send_playlist(argdict['request_id'])
             elif msgtype == "PLAYLIST":
                 logging.debug("PLAYLIST!")
                 print("GOT PLAYLIST")
-                #self._handlePlaylist()
+                self._handle_playlist(sender_peer_name, argdict['request_id'], argdict['playlist'], argdict['sign'], argdict['pk'], argdict['pksign'])
         return ''
+
 
     def _shouldDropMsg(self, msg_id):
         with self.msg_ids_seen_lock:
@@ -77,8 +100,23 @@ class Peer(object):
                 self.msg_ids_seen_nextindex = 0
             return False
 
-    def _send_playlist(self, msg_id):
-        self._send_msg("PLAYLIST", {'playlist': self.playlist, 'sign': self._sign(self.playlist)})
+    def _send_playlist(self, request_id):
+        self._send_msg("PLAYLIST", {'request_id': request_id, 'playlist': self.playlist, 'sign': self._sign(self.playlist), 'pk': self.pk, 'pksign': self.pksign})
+
+    def _handle_playlist(self, sender_peer_name, request_id, playlist, sign, pk, pksign):
+        #TODO: Improve verification of playlist
+        if self.playlist_request_id:
+            if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, sign, pk):
+                if self.playlist_request_id == request_id:
+                    self._merge_playlist(playlist)
+                    self.playlists_received += 1
+                    if self.playlists_received > NR_PLAYLISTS_PREFERRED_ON_JOIN:
+                        self.hasJoined = True
+
+    def _merge_playlist(self, playlist):
+        #TODO
+        pass
+
 
     def _handleTextMessage(self, sender_peer_name, msg):
         logging.debug("Handling Text Message")
@@ -96,6 +134,7 @@ class Peer(object):
                 if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
                     # The vote is not in the list, add it
                     playlistitem['votes'].push_back({'peer_name': peer_name, 'vote': vote})
+                playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote})
                 added = True
                 break
         if not added:
@@ -123,6 +162,10 @@ class Peer(object):
 
     def _verifyVote(self, vote, pk):
         #TODO: verify signature
+        return True
+
+    def _verifyPlaylist(self, playlist, sign, pk):
+        #TODO
         return True
 
     def _createVote(self, song):
