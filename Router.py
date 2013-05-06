@@ -3,7 +3,7 @@ import time
 from xmlrpc.client import ServerProxy
 from threading import Condition
 from threading import Lock
-from rpc.RpcHelper import RequestHandler, ThreadedXMLRPCServer
+from RpcHelper import RequestHandler, ThreadedXMLRPCServer
 
 
 class Router:

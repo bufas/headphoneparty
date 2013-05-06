@@ -1,9 +1,10 @@
 import subprocess
 import threading
 import unittest
-from central.PeerHandler import PeerHandler, PeerController
-from central.Router import Router
-from central.Visualizer import Visualizer
+from PeerHandler import PeerController
+import PeerHandler
+import Router
+import Visualizer
 
 
 class P2PTestCase(unittest.TestCase):
