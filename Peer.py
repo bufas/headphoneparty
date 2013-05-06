@@ -199,7 +199,7 @@ class Peer(object):
             self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
             self._flush_top3()
 
-    def _udpatePlaylist(self, recievedPlaylist, peerName):
+    def _updatePlaylist(self, recievedPlaylist, peerName):
         for song in recievedPlaylist:
             # Authenticate votes
             for vote in song['votes']:
