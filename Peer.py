@@ -6,10 +6,11 @@ import threading
 from threading import Lock
 from datetime import datetime
 import time
-
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
+
 from KeyDistributer import KeyDistributer
 
+#TODO: Sync TOP list
 
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
 PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life)
@@ -26,7 +27,8 @@ class Peer(object):
         self.playlist = []
         self.playlistLock = Lock()
 
-        self.sk, self.pk, self.pksign = KeyDistributer.createKeyPair()
+        keydist = KeyDistributer()
+        self.sk, self.pk, self.pksign = keydist.createKeyPair()
 
         self.msg_count = 0
         self.MSG_IDS_SEEN_MAXSIZE = 1000

@@ -3,11 +3,13 @@ from KeyGeneration import KeyHandler
 
 class KeyDistributer:
     def __init__(self):
-        self.key = KeyHandler(KeyHandler.generateKey(), None)
+        #self.key = KeyHandler(KeyHandler.generateKey(), None)
+        pass
 
     def createKeyPair(self):
-        newKey = KeyHandler.generateKey()
-        pksign = self.key.signMessage(newKey.publickey())
-        key = KeyHandler(newKey, pksign)
-        return key, pksign, self.key.getPublicKey()
+        #newKey = KeyHandler.generateKey()
+        #pksign = self.key.signMessage(newKey.publickey())
+        #key = KeyHandler(newKey, pksign)
+        #return key, pksign, self.key.getPublicKey()
+        return "", "", ""
 
