@@ -199,13 +199,13 @@ class Peer(object):
             self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
             self._flush_top3()
 
-    def _updatePlaylist(self, recievedPlaylist, peerName):
+    def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
             # Authenticate votes
             for vote in song['votes']:
                 if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(song['song'], vote['vote'], vote['pk']):
                     # Vote is authentic, add it
-                    self._addVote(song['song'], peerName, vote)
+                    self._addVote(song['song'], vote['peer_name'], vote['vote'])
                 else:
                     # This guy is a cheater
                     # TODO sound the alarm
