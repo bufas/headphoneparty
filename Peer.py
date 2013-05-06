@@ -11,7 +11,10 @@ import time
 
 
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
-PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life
+PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life)
+OUT_OF_RANGE_CHECK_INTERVAL = 5 #secs
+OUT_OF_RANGE_TIME_LIMIT = 60 #secs
+LOCK_TOP = 3
 
 class Peer(object):
     def __init__(self, name, host, port, driverHost, driverPort):
@@ -35,6 +38,14 @@ class Peer(object):
 
         self.hasJoined = False
 
+        self._time_since_last_msg = 0
+        self._time_since_last_msg_lock = Lock()
+
+
+        self._top = {}   # {'1': ('song', 42 votes), '2': (...)}
+        for topX in range(1,LOCK_TOP+1):
+            self._top[topX] = None
+        self._toplock = Lock()
 
 
     def start(self):
@@ -49,9 +60,25 @@ class Peer(object):
         server_thread.setDaemon(True)  # Don't wait for server thread to exit.
         server_thread.start()
 
+        out_of_range_check_thread = threading.Thread(name="out_of_range_check_thread", target=self._check_out_of_range)
+        out_of_range_check_thread.setDaemon(True)  # Don't wait for server thread to exit.
+        out_of_range_check_thread.start()
+
         print("ready\n")
 
         self._main_loop()
+
+    def _check_out_of_range(self):
+        while True:
+            time.sleep(OUT_OF_RANGE_CHECK_INTERVAL)
+            if self.hasJoined:
+                with self._time_since_last_msg_lock:
+                    self._time_since_last_msg += OUT_OF_RANGE_CHECK_INTERVAL
+                    if self._time_since_last_msg > OUT_OF_RANGE_TIME_LIMIT:
+                        self.hasJoined = False
+                        self._join()
+                        self._time_since_last_msg = 0
+
 
     def _join(self):
         self.playlists_received = 0
@@ -61,6 +88,7 @@ class Peer(object):
         join_timeout_thread = threading.Thread(name="join", target=self._join_timeout)
         join_timeout_thread.setDaemon(True)  # Don't wait for thread to exit.
         join_timeout_thread.start()
+
 
     def _join_timeout(self):
         time.sleep(PLAYLIST_RECV_TIMEOUT_ON_JOIN)
@@ -108,14 +136,12 @@ class Peer(object):
         if self.playlist_request_id:
             if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, sign, pk):
                 if self.playlist_request_id == request_id:
-                    self._merge_playlist(playlist)
+                    self._updatePlaylist(playlist)
                     self.playlists_received += 1
                     if self.playlists_received > NR_PLAYLISTS_PREFERRED_ON_JOIN:
                         self.hasJoined = True
+                        self.playlist_request_id = None
 
-    def _merge_playlist(self, playlist):
-        #TODO
-        pass
 
 
     def _handleTextMessage(self, sender_peer_name, msg):
@@ -126,6 +152,38 @@ class Peer(object):
         if self._verifyPK(pk, pksign) and self._verifyVote(song, vote, pk):
             self._addVote(song, sender_peer_name, vote)
 
+    def _flush_top3(self, updated_song, new_vote_cnt):
+        with self._toplock:
+            inTop = False
+            for (topX, (songX, votecntX)) in self._top.items():
+                if updated_song == songX:
+                    inTop = True
+                    self._top[topX] = (songX, votecntX+1)
+                    break
+            if not inTop:
+                if not self._top[LOCK_TOP]: # If not specified yet
+                    self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
+                else:
+                    lastTopSongDesc = self._top3[LOCK_TOP]
+                    if self._compare_songs((updated_song, new_vote_cnt), lastTopSongDesc):
+                        self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
+
+            # Update internally
+            for topX in range(LOCK_TOP, 1, -1):
+                songdescX = self._top[topX]
+                songdescY = self._top3[topX-1]
+                if self._compare_songs(songdescY, songdescX):
+                    self._top[topX] = songdescY
+                    self._top[topX-1] = songdescX
+
+    def _compare_songs(self, songdesc1, songdesc2):
+        # Returns true if first song has higher rank
+        (song1, votecnt1) = songdesc1
+        (song2, votecnt2) = songdesc2
+        if votecnt1 > votecnt2 or (votecnt1 == votecnt2 and song1 < song2):
+            return True
+        return False
+
     def _addVote(self, song, peer_name, vote):
         # If exists
         added = False
@@ -133,12 +191,13 @@ class Peer(object):
             if playlistitem['song'] == song:
                 if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
                     # The vote is not in the list, add it
-                    playlistitem['votes'].push_back({'peer_name': peer_name, 'vote': vote})
-                playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote})
+                    playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote})
+                    self._flush_top3()
                 added = True
                 break
         if not added:
-            self.playlist.push_back({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
+            self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
+            self._flush_top3()
 
     def _udpatePlaylist(self, recievedPlaylist, peerName):
         for song in recievedPlaylist:
