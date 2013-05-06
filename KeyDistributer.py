@@ -1,12 +1,13 @@
-DISTRIBUTER_SECRET_KEY = ''
-DISTRIBUTER_PUBLIC_KEY = ''
+from KeyGeneration import KeyHandler
+
 
 class KeyDistributer:
-    @staticmethod
-    def createKeyPair():
-        #TODO
-        sk = ''
-        pk = ''
-        pksign = '' #Sign with DISTRIBUTER_KEY
-        return sk, pk, pksign
+    def __init__(self):
+        self.key = KeyHandler(KeyHandler.generateKey(), None)
+
+    def createKeyPair(self):
+        newKey = KeyHandler.generateKey()
+        pksign = self.key.signMessage(newKey.publickey())
+        key = KeyHandler(newKey, pksign)
+        return key, pksign, self.key.getPublicKey()
 
