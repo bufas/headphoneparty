@@ -10,8 +10,6 @@ from RpcHelper import RequestHandler, ThreadedXMLRPCServer
 
 from KeyDistributer import KeyDistributer
 
-#TODO: Sync TOP list
-
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
 PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life)
 OUT_OF_RANGE_CHECK_INTERVAL = 5 #secs
@@ -19,11 +17,12 @@ OUT_OF_RANGE_TIME_LIMIT = 60 #secs
 LOCK_TOP = 3
 
 class Peer(object):
-    def __init__(self, name, host, port, driverHost, driverPort):
+    def __init__(self, name, host, port, driverHost, driverPort, manualOverride):
         self.name, self.host, self.port = name, host, port
         self.driverHost, self.driverPort = driverHost, driverPort
+        self.manualOverride = manualOverride
 
-        # [{'song': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'vote': 'signature_on_song'}, {'peer_name': 'P2', 'vote': '...'}]]
+        # [{'song': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'vote': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'vote': '...', ...}]]
         self.playlist = []
         self.playlistLock = Lock()
 
@@ -63,9 +62,10 @@ class Peer(object):
         server_thread.setDaemon(True)  # Don't wait for server thread to exit.
         server_thread.start()
 
-        out_of_range_check_thread = threading.Thread(name="out_of_range_check_thread", target=self._check_out_of_range)
-        out_of_range_check_thread.setDaemon(True)  # Don't wait for server thread to exit.
-        out_of_range_check_thread.start()
+        if not self.manualOverride:
+            out_of_range_check_thread = threading.Thread(name="out_of_range_check_thread", target=self._check_out_of_range)
+            out_of_range_check_thread.setDaemon(True)  # Don't wait for server thread to exit.
+            out_of_range_check_thread.start()
 
         print("ready\n")
 
@@ -111,6 +111,8 @@ class Peer(object):
             elif msgtype == "VOTE":
                 self._forward_msg(sender_peer_name, msgtype, argdict) # Forward
                 self._handleVote(sender_peer_name, str(argdict['song']), str(argdict['vote']), str(argdict['pk']), str(argdict['pksign']))
+            elif msgtype == "VOTES":
+                self._handleVotes(str(argdict['song']), argdict['votes'])
             elif msgtype == "GETLIST":
                 logging.debug("GETLIST!")
                 self._send_playlist(argdict['request_id'])
@@ -119,6 +121,32 @@ class Peer(object):
                 print("GOT PLAYLIST")
                 self._handle_playlist(sender_peer_name, argdict['request_id'], argdict['playlist'], argdict['sign'], argdict['pk'], argdict['pksign'])
         return ''
+
+    def _play_next(self):
+        with self.playlistLock:
+            with self._toplock:
+                if self._top['1']:
+                    (nextsong, _) = self._top['1']
+
+                    # Clean up
+                    for i in range(1, LOCK_TOP):
+                        self._top[i] = self._top[i+1]
+                    self._top[LOCK_TOP] = None
+
+                    # Add new song to top
+                    maxcnt = 0
+                    maxsong = None
+                    for playlistitem in self.playlist:
+                        if self._compare_songs((playlistitem['song'], len(playlistitem['votes'])), (maxsong, maxcnt)):
+                            maxcnt = len(playlistitem['votes'])
+                            maxsong = playlistitem['song']
+                    if maxsong:
+                        self._flush_top(maxsong, maxcnt)
+
+                    # Tell
+                    playtxt = "PLAYING " + nextsong
+                    logging.debug(playtxt)
+                    print(playtxt)
 
 
     def _shouldDropMsg(self, msg_id):
@@ -130,6 +158,12 @@ class Peer(object):
             if self.msg_ids_seen_nextindex >= self.MSG_IDS_SEEN_MAXSIZE:
                 self.msg_ids_seen_nextindex = 0
             return False
+
+    def _shout_votes(self, song):
+        for playlistitem in self.playlist:
+            if playlistitem['song'] == song:
+                self._send_msg("VOTES", {'song': song, 'votes': playlistitem['votes']})
+                break
 
     def _send_playlist(self, request_id):
         self._send_msg("PLAYLIST", {'request_id': request_id, 'playlist': self.playlist, 'sign': self._sign(self.playlist), 'pk': self.pk, 'pksign': self.pksign})
@@ -155,7 +189,13 @@ class Peer(object):
         if self._verifyPK(pk, pksign) and self._verifyVote(song, vote, pk):
             self._addVote(song, sender_peer_name, vote)
 
-    def _flush_top3(self, updated_song, new_vote_cnt):
+    def _handleVotes(self, song, votes):
+        # Merge votes
+        for vote in votes:
+            self._addVote(song, vote['vote'], vote['pk'], vote['pksign'])
+
+
+    def _flush_top(self, updated_song, new_vote_cnt):
         with self._toplock:
             inTop = False
             for (topX, (songX, votecntX)) in self._top.items():
@@ -164,20 +204,27 @@ class Peer(object):
                     self._top[topX] = (songX, votecntX+1)
                     break
             if not inTop:
+                add = False
                 if not self._top[LOCK_TOP]: # If not specified yet
-                    self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
+                    add = True
                 else:
-                    lastTopSongDesc = self._top3[LOCK_TOP]
+                    lastTopSongDesc = self._top[LOCK_TOP]
                     if self._compare_songs((updated_song, new_vote_cnt), lastTopSongDesc):
-                        self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
+                        add = True
+            if add:
+                self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
 
             # Update internally
             for topX in range(LOCK_TOP, 1, -1):
                 songdescX = self._top[topX]
-                songdescY = self._top3[topX-1]
+                songdescY = self._top[topX-1]
                 if self._compare_songs(songdescY, songdescX):
                     self._top[topX] = songdescY
                     self._top[topX-1] = songdescX
+
+            if add:
+                # Flush votes for new song in top X (vote sync)
+                self._shout_votes(updated_song)
 
     def _compare_songs(self, songdesc1, songdesc2):
         # Returns true if first song has higher rank
@@ -187,28 +234,32 @@ class Peer(object):
             return True
         return False
 
-    def _addVote(self, song, peer_name, vote):
-        # If exists
-        added = False
-        for playlistitem in self.playlist:
-            if playlistitem['song'] == song:
-                if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
-                    # The vote is not in the list, add it
-                    playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote})
-                    self._flush_top3()
-                added = True
-                break
-        if not added:
-            self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote}]})
-            self._flush_top3()
+    def _addVote(self, song, peer_name, vote, pk, pksign):
+        #Verify vote
+        if self._verifyPK(pk, pksign) and \
+           self._verifyVote(vote, pk):
+            # If exists
+            added = False
+
+            for playlistitem in self.playlist:
+                if playlistitem['song'] == song:
+                    if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
+                        # The vote is not in the list, add it
+                        playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote, 'pk': pk, 'pksign': pksign})
+                        self._flush_top(song, len(playlistitem['votes']))
+                    added = True
+                    break
+            if not added:
+                self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote, 'pk': pk, 'pksign': pksign}]})
+                self._flush_top(song, 1)
 
     def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
             # Authenticate votes
             for vote in song['votes']:
-                if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(song['song'], vote['vote'], vote['pk']):
+                if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(song['song'], vote['vote'], vote['pk'], vote['pksign']):
                     # Vote is authentic, add it
-                    self._addVote(song['song'], vote['peer_name'], vote['vote'])
+                    self._addVote(song['song'], vote['peer_name'], vote['vote'], vote['pk'], vote['pksign'])
                 else:
                     # This guy is a cheater
                     # TODO sound the alarm
@@ -277,6 +328,9 @@ class Peer(object):
             if "join" == cmd:
                 self._join()
                 continue
+            if "play_next" == cmd:
+                self._play_next()
+                continue
             if "say_timeout" == cmd:
                 print("SAY_TIMEOUT")  # Used for test readline timeout
                 continue
@@ -299,6 +353,7 @@ if __name__ == '__main__':
     port = int(sys.argv[3])
     driverHost = sys.argv[4]
     driverPort = int(sys.argv[5])
+    manualOverride = bool(sys.argv[6])
 
-    peer = Peer(name, host, port, driverHost, driverPort)
+    peer = Peer(name, host, port, driverHost, driverPort, manualOverride)
     peer.start()

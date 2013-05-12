@@ -8,7 +8,7 @@ import threading
 VERBOSE = True  # Verbose true does not pipe stderr.
 ROUTER_HOST = "127.0.0.1"
 ROUTER_PORT = 8300
-
+MANUAL_OVERRIDE = True # Disables timed threads in the peers
 
 class PeerHandler(object):
     def __init__(self, name, host, port):
@@ -17,7 +17,7 @@ class PeerHandler(object):
         self.color = None
         self.guiID = None
 
-        cmd = "python -u Peer.py %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT)
+        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
