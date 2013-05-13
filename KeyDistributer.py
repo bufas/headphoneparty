@@ -1,4 +1,4 @@
-from KeyGeneration import KeyHandler
+from KeyHandler import KeyHandler
 
 
 class KeyDistributer:

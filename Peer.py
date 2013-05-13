@@ -10,6 +10,9 @@ from RpcHelper import RequestHandler, ThreadedXMLRPCServer
 
 from KeyDistributer import KeyDistributer
 
+#TODO: Sync TOP list
+from clockSync import Clock
+
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
 PLAYLIST_RECV_TIMEOUT_ON_JOIN = 3 #secs (for simulation, not real life)
 OUT_OF_RANGE_CHECK_INTERVAL = 5 #secs
@@ -25,6 +28,8 @@ class Peer(object):
         # [{'song': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'vote': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'vote': '...', ...}]]
         self.playlist = []
         self.playlistLock = Lock()
+
+        self.clock = Clock(self)
 
         keydist = KeyDistributer()
         self.sk, self.pk, self.pksign = keydist.createKeyPair()
@@ -120,6 +125,9 @@ class Peer(object):
                 logging.debug("PLAYLIST!")
                 print("GOT PLAYLIST")
                 self._handle_playlist(sender_peer_name, argdict['request_id'], argdict['playlist'], argdict['sign'], argdict['pk'], argdict['pksign'])
+            elif msgtype == "CLOCKSYNC":
+                (t, s) = argdict['message']
+                self.clock.recv(t, s)
         return ''
 
     def _play_next(self):
