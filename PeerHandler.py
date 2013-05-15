@@ -129,7 +129,7 @@ class PeerHandler(object):
         try:
             self.expect_output("QUITTING", 1)
         except subprocess.TimeoutExpired:
-            raise Exception("Peer unresponsive, cannot 'communicate'")
+            raise subprocess.TimeoutExpired("Peer unresponsive, cannot 'communicate'", 1)
         return self.process.communicate(bytes(msg, "utf-8"), timeout)
 
     def write_to_stdin(self, msg):
@@ -186,7 +186,7 @@ class PeerController():
         meX = peer.x
         meY = peer.y
         for opeer in self.peers:
-            if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2) and opeer != peer:
+            if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
                 if opeer.color:
                     print(opeer.name + '(' + opeer.color + ') is in range')
                 else:

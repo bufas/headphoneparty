@@ -63,16 +63,17 @@ class Router:
     def shutdown(self):
         self.rpc_server.server_close()
 
-    def forwardMessage(self, msg_id, peer_name, msgtype, argdict):
+    # Peer name is the origin of the message
+    def forwardMessage(self, immediate_sender, msg_id, peer_name, msgtype, argdict):
         #Find peer
         #TODO: IMPROVE
-        sender_peer = None
+        immediate_sender_peer = None
         for peer in self.peers:
-            if peer.name == peer_name:
-                sender_peer = peer
+            if peer.name == immediate_sender:
+                immediate_sender_peer = peer
                 break
         self.msg_lock.acquire()
-        self.msg_queue.append((msg_id, sender_peer, msgtype, argdict))
+        self.msg_queue.append((immediate_sender_peer, msg_id, peer_name, msgtype, argdict))
         self.queue_was_empty = False
         self.msg_cond.notify()
         self.msg_lock.release()
@@ -91,23 +92,23 @@ class Router:
                 if len(self.msg_queue) == 0:
                     self.msg_cond.wait()
                 for i in range(len(self.msg_queue)):
-                    (msg_id, sender_peer, msgtype, argdict) = self.msg_queue[i]
-                    if not self.useTicks or (self.peer_can_send[sender_peer.name]
-                                             and self.peer_can_send[sender_peer.name] > 0):
+                    (immediate_sender_peer, msg_id, peer_name, msgtype, argdict) = self.msg_queue[i]
+                    if not self.useTicks or (self.peer_can_send[immediate_sender_peer.name]
+                                             and self.peer_can_send[immediate_sender_peer.name] > 0):
                         self.msg_queue.pop(i)
                         if self.useTicks:
-                            self.peer_can_send[sender_peer.name] -= 1
-                        self._do_forward_msg(msg_id, sender_peer, msgtype, argdict)
+                            self.peer_can_send[immediate_sender_peer.name] -= 1
+                        self._do_forward_msg(immediate_sender_peer, msg_id, peer_name, msgtype, argdict)
                         break
 
-    def _do_forward_msg(self, msg_id, sender_peer, msgtype, argdict):
-        peersInRange = self.peer_controller.findPeersInRange(sender_peer)
+    def _do_forward_msg(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
+        peersInRange = self.peer_controller.findPeersInRange(immediate_sender_peer)
         for peer in peersInRange:
-            if peer != sender_peer:
+            if peer != immediate_sender_peer:
                 try:
-                    print("INFO: Sending Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
+                    print("INFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
                     serverProxy = ServerProxy('http://' + peer.adr())
-                    serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)
+                    serverProxy.ReceiveMsg(msg_id, peer_name, str(msgtype), argdict)
                 except ConnectionRefusedError:
-                    print("INFO: Message sent")
-                    print("WARNING: Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
+                    print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
+        print("INFO: Message sent")

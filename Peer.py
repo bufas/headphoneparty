@@ -4,14 +4,13 @@ import sys
 import re
 import threading
 from threading import Lock
+from threading import RLock
 from datetime import datetime
 import time
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
-import pprint
 
 from KeyDistributer import KeyDistributer
 
-#TODO: Sync TOP list
 from clockSync import Clock
 
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
@@ -39,7 +38,7 @@ class Peer(object):
         self.MSG_IDS_SEEN_MAXSIZE = 1000
         self.msg_ids_seen = [-1] * self.MSG_IDS_SEEN_MAXSIZE
         self.msg_ids_seen_nextindex = 0
-        self.msg_ids_seen_lock = Lock()
+        self.msg_ids_seen_lock = RLock()
 
         self.playlist_request_id = None
         self.playlists_received = 0
@@ -48,8 +47,6 @@ class Peer(object):
 
         self._time_since_last_msg = 0
         self._time_since_last_msg_lock = Lock()
-
-        self.pp = pprint.PrettyPrinter(indent=4)
 
         self._top = [None] * LOCK_TOP   # [('song', 42 votes), (...)]
         self._toplock = Lock()
@@ -71,7 +68,7 @@ class Peer(object):
             out_of_range_check_thread.setDaemon(True)  # Don't wait for server thread to exit.
             out_of_range_check_thread.start()
 
-        print("ready\n")
+        print("ready")
 
         self._main_loop()
 
@@ -115,6 +112,7 @@ class Peer(object):
             if msgtype == "TXTMSG":
                 self._handleTextMessage(sender_peer_name, str(argdict['msg']))
             elif msgtype == "VOTE":
+                logging.debug("HANDLE VOTE")
                 self._forward_msg(msg_id, sender_peer_name, msgtype, argdict) # Forward
                 self._handleVote(sender_peer_name, str(argdict['song']), str(argdict['vote']), str(argdict['pk']), str(argdict['pksign']))
             elif msgtype == "VOTES":
@@ -158,15 +156,18 @@ class Peer(object):
                     print(playtxt)
 
 
-    def _shouldDropMsg(self, msg_id):
-        logging.debug("AA")
+    def _addMsgId(self, msg_id):
         with self.msg_ids_seen_lock:
-            if msg_id in self.msg_ids_seen:
-                return True
             self.msg_ids_seen[self.msg_ids_seen_nextindex] = msg_id
             self.msg_ids_seen_nextindex += 1
             if self.msg_ids_seen_nextindex >= self.MSG_IDS_SEEN_MAXSIZE:
                 self.msg_ids_seen_nextindex = 0
+
+    def _shouldDropMsg(self, msg_id):
+        with self.msg_ids_seen_lock:
+            if msg_id in self.msg_ids_seen:
+                return True
+            self._addMsgId(msg_id)
             return False
 
     def _shout_votes(self, song):
@@ -317,7 +318,9 @@ class Peer(object):
     def _gen_msg_id(self):
         dt = datetime.now()
         self.msg_count += 1
-        return self.name + "_" + str(dt.microsecond) + str(self.msg_count)
+        msg_id = self.name + "_" + str(dt.microsecond) + str(self.msg_count)
+        self._addMsgId(msg_id)
+        return msg_id
 
     def _send_msg(self, msgtype, argdict):
         thread = threading.Thread(name="forward", target=self._do_send_msg,
@@ -327,7 +330,7 @@ class Peer(object):
 
     def _do_send_msg(self, msg_id, sender_peer_name, msgtype, argdict):
         s = ServerProxy('http://' + self.driverHost + ':' + str(self.driverPort))
-        s.forwardMessage(msg_id, sender_peer_name, msgtype, argdict)
+        s.forwardMessage(self.name, msg_id, sender_peer_name, msgtype, argdict)
 
 
 
@@ -345,7 +348,9 @@ class Peer(object):
             match = re.match(r'vote (\S+)', cmd)
             if match:
                 song = match.group(1)
-                self._send_msg("VOTE", {'song': song, 'vote': self._createVote(song), 'pk': self.pk, 'pksign': self.pksign})
+                vote = self._createVote(song)
+                self._addVote(song, self.name, vote, self.pk, self.pksign)
+                self._send_msg("VOTE", {'song': song, 'vote': vote, 'pk': self.pk, 'pksign': self.pksign})
                 continue
             if "join" == cmd:
                 self._join()
