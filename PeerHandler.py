@@ -4,6 +4,9 @@ import random
 import math
 import time
 import threading
+from io import BufferedReader
+from collections import deque
+from threading import Lock
 
 VERBOSE = True  # Verbose true does not pipe stderr.
 ROUTER_HOST = "127.0.0.1"
@@ -11,11 +14,15 @@ ROUTER_PORT = 8300
 MANUAL_OVERRIDE = True # Disables timed threads in the peers
 
 class PeerHandler(object):
+    BUFFER_SIZE = 100
+
     def __init__(self, name, host, port):
         self.name, self.host, self.port = name, host, port
         self.x, self.y, self.vecX, self.vecY = None, None, None, None
         self.color = None
         self.guiID = None
+        self.buffer = deque(maxlen=self.BUFFER_SIZE)
+        self.bufferlock = Lock()
 
         cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
         if VERBOSE:
@@ -32,6 +39,28 @@ class PeerHandler(object):
                                             stdout=subprocess.PIPE,
                                             stderr=subprocess.PIPE)
 
+        # Start reader
+        reader_thread = threading.Thread(name="reader", target=self._reader)
+        reader_thread.setDaemon(True)  # Don't wait for thread to exit.
+        reader_thread.start()
+
+    def _reader(self):
+        while True:
+            line = self.process.stdout.readline()
+            if not line:
+                raise Exception(self.name + " stdout closed while waiting for output")
+            line = line.decode("utf-8")
+            with self.bufferlock:
+                self.buffer.append(line)
+
+            print("got output (" + self.name + "): " + line)
+
+            if "QUITTING" in line:
+                break
+
+
+
+
     def setLocation(self, peerLoc):
         (x, y, vecX, vecY) = peerLoc
         self.x, self.y, self.vecX, self.vecY = x, y, vecX, vecY
@@ -43,36 +72,22 @@ class PeerHandler(object):
         return "%s:%d" % (self.host, self.port)
 
     def expect_output(self, msg, timeout=0):
-        """Wait until stdout contains msg; returns line."""
-        stopThread = False
-
-        # Bad solution for timeout:
-        # Make a thread that, if not stopped, will after timeout tell peer to shout
-        # "TIMEOUT", causing readline() to exit.
-        def timeout_logic():
-            timeSlept = 0
-            while not stopThread:
-                if timeSlept >= timeout:
-                    self.write_to_stdin("say_timeout \n")
-                    break
-                time.sleep(0.1)
-                timeSlept += 0.1
-
-        if timeout != 0:
-            timeout_thread = threading.Thread(name="timeout_thread", target=timeout_logic)
-            timeout_thread.setDaemon(True)  # Don't wait for thread to exit.
-            timeout_thread.start()
-
+        print ("EXPECT: " + msg)
+        sleep_time = 0.05
+        acc_sleep_time = 0
         while True:
-            line = self.process.stdout.readline()
+            line = None
+            with self.bufferlock:
+                if len(self.buffer) > 0:
+                    line = self.buffer.popleft()
             if not line:
-                raise Exception(self.name + " stdout closed while waiting for output")
-            line = str(line)
-            logging.debug("got output (" + self.name + "): " + line)
-            if msg in line:
-                stopThread = True
-                return line
-            if "SAY_TIMEOUT" in line:
+                time.sleep(sleep_time)
+                acc_sleep_time += sleep_time
+            else:
+                if msg in line:
+                    print("EXPECT OK")
+                    return line
+            if timeout > 0 and acc_sleep_time >= timeout:
                 raise subprocess.TimeoutExpired(msg, timeout)
 
     def expect_ready(self):
@@ -92,6 +107,12 @@ class PeerHandler(object):
 
     def communicate(self, msg, timeout=None):
         """Feeds msg to stdin, waits for peer to exit, and returns (stdout, stderr)."""
+        #Stop read loop - it seems we can't 'communicate' while doing readline
+        self.write_to_stdin("say_quit\n")
+        try:
+            self.expect_output("QUITTING", 1)
+        except subprocess.TimeoutExpired:
+            raise Exception("Peer unresponsive, cannot 'communicate'")
         return self.process.communicate(bytes(msg, "utf-8"), timeout)
 
     def write_to_stdin(self, msg):

@@ -54,7 +54,6 @@ class Peer(object):
             self._top[topX] = None
         self._toplock = Lock()
 
-
     def start(self):
         # Create server
         self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler)
@@ -92,10 +91,11 @@ class Peer(object):
         self.playlists_received = 0
         self.playlist_request_id = self._gen_msg_id()
         self._send_msg("GETLIST", {'request_id': self.playlist_request_id})
-        # Start join timeout
-        join_timeout_thread = threading.Thread(name="join", target=self._join_timeout)
-        join_timeout_thread.setDaemon(True)  # Don't wait for thread to exit.
-        join_timeout_thread.start()
+        if not self.manualOverride:
+            # Start join timeout
+            join_timeout_thread = threading.Thread(name="join", target=self._join_timeout)
+            join_timeout_thread.setDaemon(True)  # Don't wait for thread to exit.
+            join_timeout_thread.start()
 
 
     def _join_timeout(self):
@@ -107,10 +107,10 @@ class Peer(object):
         # For some reason argdict values has turned into lists
         txt = self.name + ": GOTMSG of type " + msgtype + " from peer " + sender_peer_name + ": " + str(argdict)
         logging.debug(txt)
-        print(txt)
         if self._shouldDropMsg(msg_id):
             logging.debug("DROPPEDMSG")
         else:
+            print(txt)
             if msgtype == "TXTMSG":
                 self._handleTextMessage(sender_peer_name, str(argdict['msg']))
             elif msgtype == "VOTE":
@@ -158,6 +158,7 @@ class Peer(object):
 
 
     def _shouldDropMsg(self, msg_id):
+        logging.debug("AA")
         with self.msg_ids_seen_lock:
             if msg_id in self.msg_ids_seen:
                 return True
@@ -181,7 +182,9 @@ class Peer(object):
         if self.playlist_request_id:
             if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, sign, pk):
                 if self.playlist_request_id == request_id:
+                    logging.debug("A")
                     self._updatePlaylist(playlist)
+                    logging.debug("B")
                     self.playlists_received += 1
                     if self.playlists_received > NR_PLAYLISTS_PREFERRED_ON_JOIN:
                         self.hasJoined = True
@@ -201,6 +204,7 @@ class Peer(object):
         # Merge votes
         for vote in votes:
             self._addVote(song, vote['vote'], vote['pk'], vote['pksign'])
+
 
 
     def _flush_top(self, updated_song, new_vote_cnt):
@@ -341,6 +345,15 @@ class Peer(object):
                 continue
             if "say_timeout" == cmd:
                 print("SAY_TIMEOUT")  # Used for test readline timeout
+                continue
+            if "ping" == cmd:
+                logging.debug("ping")
+                print("pong")
+                logging.debug("pong")
+                sys.stdout.flush()
+                continue
+            if "say_quit" == cmd:
+                print("QUITTING")
                 continue
             print("Unknown command:", cmd)
 

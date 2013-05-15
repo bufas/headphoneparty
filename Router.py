@@ -32,16 +32,17 @@ class Router:
 
     def wait_queue_empty(self):
         # Check twice with small interval
+        queue_was_empty = False
         while True:
             with self.msg_lock:
                 if len(self.msg_queue) > 0:
-                    self.msg_cond.wait()
+                    queue_was_empty = True
                 else:
-                    if self.queue_was_empty:
+                    if queue_was_empty:
                         break
                     else:
-                        self.queue_was_empty = True
-                        time.sleep(0.5)
+                        queue_was_empty = True
+            time.sleep(0.1)
 
     def start(self):
         # Create server
@@ -103,5 +104,8 @@ class Router:
         peersInRange = self.peer_controller.findPeersInRange(sender_peer)
         for peer in peersInRange:
             if peer != sender_peer:
-                serverProxy = ServerProxy('http://' + peer.adr())
-                serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)
+                try:
+                    serverProxy = ServerProxy('http://' + peer.adr())
+                    serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)
+                except ConnectionRefusedError:
+                    print("WARNING: Message (" + msg_id + ", " + sender_peer + ", " + msgtype + ", " + str(argdict))

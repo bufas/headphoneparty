@@ -5,7 +5,7 @@ from PeerHandler import PeerController
 from PeerHandler import PeerHandler
 from Router import Router
 from Visualizer import Visualizer
-
+import time
 
 class P2PTestCase(unittest.TestCase):
     NO_OF_PEERS = 1
@@ -152,5 +152,19 @@ class JoinTests(P2PTestCase):
     def test_join(self):
         self.peers[0].write_to_stdin("join\n")
         self.peers[0].expect_output("GOT PLAYLIST", 2)
+        for peer in self.peers:
+            peer.communicate("q \n")
+
+class JoinTestsMany(P2PTestCase):
+    NO_OF_PEERS = 50
+    RADIO_RANGE = 500
+    USE_TICKS = False
+
+    def test_join(self):
+        for i in range(len(self.peers)):
+            self.peers[i].write_to_stdin("join\n")
+            self.peers[i].expect_output("GOT PLAYLIST", 2)
+            self.wait_nw_idle()
+
         for peer in self.peers:
             peer.communicate("q \n")
