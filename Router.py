@@ -18,10 +18,16 @@ class Router:
         self.useTicks = useTicks
         self.peer_can_send = {}
         self.queue_was_empty = False
+        self.queue_active = False
 
         # Init for ticks
         for peer in self.peers:
             self.peer_can_send[peer.name] = 0
+
+    def activate_queue(self):
+        with self.msg_lock:
+            self.queue_active = True
+            self.msg_cond.notify()
 
     def tick(self, num_msgs):
         """Each peer can only send a fixed number of messages each time interval"""
@@ -89,6 +95,9 @@ class Router:
     def _queue_handler(self):
         while True:
             with self.msg_lock:
+                if not self.queue_active:
+                    self.msg_cond.wait()
+                    continue
                 if len(self.msg_queue) == 0:
                     self.msg_cond.wait()
                 for i in range(len(self.msg_queue)):
