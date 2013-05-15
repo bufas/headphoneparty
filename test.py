@@ -168,3 +168,18 @@ class JoinTestsMany(P2PTestCase):
 
         for peer in self.peers:
             peer.communicate("q \n")
+
+class SimpleVoteTests(P2PTestCase):
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 999999999
+    USE_TICKS = False
+
+    def test_add_vote(self):
+        self.peers[0].write_to_stdin("vote abc\n")
+        self.peers[1].expect_output("VOTE ADDED", 2)
+        self.peers[0].get_playlist()
+
+        time.sleep(2)
+
+
+

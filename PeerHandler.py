@@ -91,6 +91,18 @@ class PeerHandler(object):
     def expect_ready(self):
         self.expect_output("ready")
 
+    def get_playlist(self):
+        self.write_to_stdin("get_playlist\n")
+
+        return
+        line = self.expect_output("#STATS#")
+        line = line.strip("#STATS#").strip()
+        stats = {}
+        for stat in line.split("#"):
+            statpair = stat.split(":")
+            stats[statpair[0]] = statpair[1]
+        return stats
+
     def kill(self):
         # Return code is None if process has not finished.
         if self.process.returncode is None:

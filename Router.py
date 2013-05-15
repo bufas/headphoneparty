@@ -105,7 +105,9 @@ class Router:
         for peer in peersInRange:
             if peer != sender_peer:
                 try:
+                    print("INFO: Sending Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
                     serverProxy = ServerProxy('http://' + peer.adr())
                     serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)
                 except ConnectionRefusedError:
+                    print("INFO: Message sent")
                     print("WARNING: Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
