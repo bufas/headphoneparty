@@ -1,7 +1,9 @@
 import math
+import threading
+import time
 
 MAX_K = 20  # specifies how many local and global clocks to remember
-TAU = 1000  # specifies how often the clock synchronizes (in ms)
+TAU = 15000  # specifies how often the clock synchronizes (in ms)
 
 class Clock():
     def __init__(self, peer):
@@ -11,6 +13,10 @@ class Clock():
         self.max_gps = 0
         self.localClock = [0 in range(MAX_K)]
         self.globalClock = [0 in range(MAX_K)]
+
+        sync_thread = threading.Thread(name="sync", target=self.sync)
+        sync_thread.setDaemon(True)
+        sync_thread.start()
 
     def getMlocal(self):
         return max(self.localClock)
@@ -27,6 +33,11 @@ class Clock():
             self.send((t, s))
             if t/TAU >= self.next_sync:
                 self.next_sync = math.floor(t/TAU) + 1
+
+    def sync(self):
+        while time.time() * 1000 > self.next_sync * TAU:
+            self.send((self.local[self.current], self.max_gps))
+            self.next_sync = math.floor(time.time() * 1000 / TAU) + 1
 
     def send(self, msg):
         self.peer._send_msg("CLOCKSYNC", {'message': msg})
