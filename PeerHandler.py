@@ -93,15 +93,22 @@ class PeerHandler(object):
 
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
-
-        return
-        line = self.expect_output("#STATS#")
-        line = line.strip("#STATS#").strip()
-        stats = {}
-        for stat in line.split("#"):
-            statpair = stat.split(":")
-            stats[statpair[0]] = statpair[1]
-        return stats
+        line = self.expect_output("PLAYLIST#####")
+        line = line.strip("PLAYLIST#####").strip()
+        playlist = []
+        for playlistitem in line.split("####"):
+            if not playlistitem == "":
+                [song, votes] = playlistitem.split("###")
+                voteslst = []
+                for vote in votes.split("@@"):
+                    if not vote == "":
+                        voteparams = vote.split("#")
+                        votedict = {}
+                        for i in range(0,len(voteparams)-1,2):
+                            votedict[voteparams[i]] = voteparams[i+1]
+                        voteslst.append(votedict)
+                playlist.append({'song': song, 'votes': voteslst})
+        return playlist
 
     def kill(self):
         # Return code is None if process has not finished.
