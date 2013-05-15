@@ -72,7 +72,6 @@ class PeerHandler(object):
         return "%s:%d" % (self.host, self.port)
 
     def expect_output(self, msg, timeout=0):
-        print ("EXPECT: " + msg)
         sleep_time = 0.05
         acc_sleep_time = 0
         while True:
@@ -85,7 +84,6 @@ class PeerHandler(object):
                 acc_sleep_time += sleep_time
             else:
                 if msg in line:
-                    print("EXPECT OK")
                     return line
             if timeout > 0 and acc_sleep_time >= timeout:
                 raise subprocess.TimeoutExpired(msg, timeout)

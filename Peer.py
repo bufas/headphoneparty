@@ -158,7 +158,6 @@ class Peer(object):
 
 
     def _shouldDropMsg(self, msg_id):
-        logging.debug("AA")
         with self.msg_ids_seen_lock:
             if msg_id in self.msg_ids_seen:
                 return True
