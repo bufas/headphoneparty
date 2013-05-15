@@ -20,7 +20,7 @@ class Clock():
         sync_thread.setDaemon(True)
         sync_thread.start()
 
-    def getMlocal(self):
+    def _getMlocal(self):
         max = self.localClock[self.current] + math.floor(time.time() * 1000) - self.localClockSetTimestamp
         for t in self.localClock[:self.current] + self.localClock[self.current+1:]:
             if t > max:
@@ -28,7 +28,7 @@ class Clock():
 
         return max
 
-    def getMglobal(self):
+    def _getMglobal(self):
         max = self.globalClock[self.current] + math.floor(time.time() * 1000) - self.globalClockSetTimestamp
         for t in self.globalClock[:self.current] + self.globalClock[self.current+1:]:
             if t > max:
@@ -36,11 +36,11 @@ class Clock():
 
         return max
 
-    def setGlobal(self, t):
+    def _setGlobal(self, t):
         self.globalClockSetTimestamp = math.floor(time.time() * 1000)
         self.globalClock[self.current] = t
 
-    def setLocal(self, t):
+    def _setLocal(self, t):
         self.localClockSetTimestamp = math.floor(time.time() * 1000)
         self.localClock[self.current] = t
 
@@ -54,12 +54,12 @@ class Clock():
             if t/TAU >= self.next_sync:
                 self.next_sync = math.floor(t/TAU) + 1
 
-    def sync(self):
+    def _sync(self):
         while time.time() * 1000 > self.next_sync * TAU:
             self.send((self.local[self.current], self.max_gps))
             self.next_sync = math.floor(time.time() * 1000 / TAU) + 1
 
-    def send(self, msg):
+    def _send(self, msg):
         self.peer._send_msg("CLOCKSYNC", {'message': msg})
 
     def gps(self, t):
