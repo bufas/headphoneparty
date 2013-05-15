@@ -16,25 +16,25 @@ class Clock():
         self.localClockSetTimestamp = 0
         self.globalClockSetTimestamp = 0
 
-        sync_thread = threading.Thread(name="sync", target=self.sync)
+        sync_thread = threading.Thread(name="sync", target=self._sync)
         sync_thread.setDaemon(True)
         sync_thread.start()
 
     def _getMlocal(self):
-        max = self.localClock[self.current] + math.floor(time.time() * 1000) - self.localClockSetTimestamp
+        result = self.localClock[self.current] + math.floor(time.time() * 1000) - self.localClockSetTimestamp
         for t in self.localClock[:self.current] + self.localClock[self.current+1:]:
-            if t > max:
-                max = t
+            if t > result:
+                result = t
 
-        return max
+        return result
 
     def _getMglobal(self):
-        max = self.globalClock[self.current] + math.floor(time.time() * 1000) - self.globalClockSetTimestamp
+        result = self.globalClock[self.current] + math.floor(time.time() * 1000) - self.globalClockSetTimestamp
         for t in self.globalClock[:self.current] + self.globalClock[self.current+1:]:
-            if t > max:
-                max = t
+            if t > result:
+                result = t
 
-        return max
+        return result
 
     def _setGlobal(self, t):
         self.globalClockSetTimestamp = math.floor(time.time() * 1000)
@@ -45,18 +45,18 @@ class Clock():
         self.localClock[self.current] = t
 
     def getLogical(self):
-        return max(self.getMlocal(), self.getMglobal())
+        return max(self._getMlocal(), self._getMglobal())
 
     def recv(self, t, s):
         if s >= self.max_gps and t > self.globalClock[self.current]:
-            self.setGlobal(t)
-            self.send((t, s))
+            self._setGlobal(t)
+            self._send((t, s))
             if t/TAU >= self.next_sync:
                 self.next_sync = math.floor(t/TAU) + 1
 
     def _sync(self):
         while time.time() * 1000 > self.next_sync * TAU:
-            self.send((self.local[self.current], self.max_gps))
+            self._send((self.localClock[self.current], self.max_gps))
             self.next_sync = math.floor(time.time() * 1000 / TAU) + 1
 
     def _send(self, msg):
@@ -66,9 +66,9 @@ class Clock():
         if t > self.max_gps:
             self.max_gps = t
             self._increaseCurrent()
-            self.setLocal(t)
-            self.setGlobal(t)
+            self._setLocal(t)
+            self._setGlobal(t)
             self.next_sync = math.floor(t/TAU) + 1
 
     def _increaseCurrent(self):
-        self.current = (self.current + 1) % self.MAX_K
+        self.current = (self.current + 1) % MAX_K
