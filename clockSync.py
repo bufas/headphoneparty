@@ -6,7 +6,7 @@ MAX_K = 20  # specifies how many local and global clocks to remember
 TAU = 15000  # specifies how often the clock synchronizes (in ms)
 
 class Clock():
-    def __init__(self, peer):
+    def __init__(self, peer, sync=False):
         self.peer = peer
         self.current = 0
         self.next_sync = 0
@@ -16,9 +16,10 @@ class Clock():
         self.localClockSetTimestamp = 0
         self.globalClockSetTimestamp = 0
 
-        sync_thread = threading.Thread(name="sync", target=self._sync)
-        sync_thread.setDaemon(True)
-        sync_thread.start()
+        if sync:
+            sync_thread = threading.Thread(name="sync", target=self._sync)
+            sync_thread.setDaemon(True)
+            sync_thread.start()
 
     def _getMlocal(self):
         result = self.localClock[self.current] + math.floor(time.time() * 1000) - self.localClockSetTimestamp
