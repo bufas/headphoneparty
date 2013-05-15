@@ -160,7 +160,7 @@ class JoinTestsMany(P2PTestCase):
     RADIO_RANGE = 500
     USE_TICKS = False
 
-    def test_many(self):
+    def test_join(self):
         for i in range(len(self.peers)):
             self.peers[i].write_to_stdin("join\n")
             self.peers[i].expect_output("GOT PLAYLIST", 2)
@@ -200,3 +200,16 @@ class DropMsg(P2PTestCase):
             self.wait_nw_idle()
         self.peers[2].write_to_stdin("vote LimboSang2")
         self.peers[2].expect_output("DROPPED MSG",2)
+
+class SimpleVoteTests(P2PTestCase):
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 999999999
+    USE_TICKS = False
+
+    def test_add_vote(self):
+        self.peers[0].write_to_stdin("vote abc\n")
+        self.peers[1].expect_output("VOTE ADDED", 2)
+        self.peers[0].get_playlist()
+
+        time.sleep(2)
+

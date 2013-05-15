@@ -72,7 +72,6 @@ class PeerHandler(object):
         return "%s:%d" % (self.host, self.port)
 
     def expect_output(self, msg, timeout=0):
-        print ("EXPECT: " + msg)
         sleep_time = 0.05
         acc_sleep_time = 0
         while True:
@@ -85,13 +84,24 @@ class PeerHandler(object):
                 acc_sleep_time += sleep_time
             else:
                 if msg in line:
-                    print("EXPECT OK")
                     return line
             if timeout > 0 and acc_sleep_time >= timeout:
                 raise subprocess.TimeoutExpired(msg, timeout)
 
     def expect_ready(self):
         self.expect_output("ready")
+
+    def get_playlist(self):
+        self.write_to_stdin("get_playlist\n")
+
+        return
+        line = self.expect_output("#STATS#")
+        line = line.strip("#STATS#").strip()
+        stats = {}
+        for stat in line.split("#"):
+            statpair = stat.split(":")
+            stats[statpair[0]] = statpair[1]
+        return stats
 
     def kill(self):
         # Return code is None if process has not finished.

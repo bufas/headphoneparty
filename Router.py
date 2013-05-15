@@ -17,7 +17,7 @@ class Router:
         self.msg_cond = Condition(self.msg_lock)
         self.useTicks = useTicks
         self.peer_can_send = {}
-        self.queue_was_empty = True
+        self.queue_was_empty = False
 
         # Init for ticks
         for peer in self.peers:
@@ -32,16 +32,16 @@ class Router:
 
     def wait_queue_empty(self):
         # Check twice with small interval
-        queue_was_empty = False
         while True:
             with self.msg_lock:
                 if len(self.msg_queue) > 0:
-                    queue_was_empty = True
+                    self.queue_was_empty = True
                 else:
-                    if queue_was_empty:
+                    if self.queue_was_empty:
+                        self.queue_was_empty = False
                         break
                     else:
-                        queue_was_empty = True
+                        self.queue_was_empty = True
             time.sleep(0.1)
 
     def start(self):
@@ -105,7 +105,9 @@ class Router:
         for peer in peersInRange:
             if peer != sender_peer:
                 try:
+                    print("INFO: Sending Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
                     serverProxy = ServerProxy('http://' + peer.adr())
                     serverProxy.ReceiveMsg(msg_id, sender_peer.name, str(msgtype), argdict)
                 except ConnectionRefusedError:
-                    print("WARNING: Message (" + msg_id + ", " + sender_peer + ", " + msgtype + ", " + str(argdict))
+                    print("INFO: Message sent")
+                    print("WARNING: Message (" + str(msg_id) + ", " + str(sender_peer) + ", " + str(msgtype) + ", " + str(argdict))
