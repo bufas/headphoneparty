@@ -13,23 +13,43 @@ class Clock():
         self.max_gps = 0
         self.localClock = [0 in range(MAX_K)]
         self.globalClock = [0 in range(MAX_K)]
+        self.localClockSetTimestamp = 0
+        self.globalClockSetTimestamp = 0
 
         sync_thread = threading.Thread(name="sync", target=self.sync)
         sync_thread.setDaemon(True)
         sync_thread.start()
 
     def getMlocal(self):
-        return max(self.localClock)
+        max = self.localClock[self.current] + math.floor(time.time() * 1000) - self.localClockSetTimestamp
+        for t in self.localClock[:self.current] + self.localClock[self.current+1:]:
+            if t > max:
+                max = t
+
+        return max
 
     def getMglobal(self):
-        return max(self.globalClock)
+        max = self.globalClock[self.current] + math.floor(time.time() * 1000) - self.globalClockSetTimestamp
+        for t in self.globalClock[:self.current] + self.globalClock[self.current+1:]:
+            if t > max:
+                max = t
+
+        return max
+
+    def setGlobal(self, t):
+        self.globalClockSetTimestamp = math.floor(time.time() * 1000)
+        self.globalClock[self.current] = t
+
+    def setLocal(self, t):
+        self.localClockSetTimestamp = math.floor(time.time() * 1000)
+        self.localClock[self.current] = t
 
     def getLogical(self):
         return max(self.getMlocal(), self.getMglobal())
 
     def recv(self, t, s):
         if s >= self.max_gps and t > self.globalClock[self.current]:
-            self.globalClock[self.current] = t
+            self.setGlobal(t)
             self.send((t, s))
             if t/TAU >= self.next_sync:
                 self.next_sync = math.floor(t/TAU) + 1
@@ -46,8 +66,8 @@ class Clock():
         if t > self.max_gps:
             self.max_gps = t
             self._increaseCurrent()
-            self.localClock[self.current] = t
-            self.globalClock[self.current] = t
+            self.setLocal(t)
+            self.setGlobal(t)
             self.next_sync = math.floor(t/TAU) + 1
 
     def _increaseCurrent(self):
