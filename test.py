@@ -80,6 +80,18 @@ class P2PTestCase(unittest.TestCase):
         for peer in peers:
             peer.expect_ready()
 
+    def has_song_with_votes_in_playlist(self, playlist, song):
+        for playlistitem in playlist:
+            if playlistitem['song'] == song:
+                if len(playlistitem['votes']) > 0:
+                    return True
+                return False
+        return False
+
+    def assert_song_in_playlist(self, playlist, song):
+        self.assertTrue(self.has_song_with_votes_in_playlist(playlist,song), "Song " + song + " was expected in playlist")
+
+
 
 class SimpleVisualTest(P2PTestCase):
     NO_OF_PEERS = 10
@@ -205,10 +217,21 @@ class SimpleVoteTests(P2PTestCase):
     RADIO_RANGE = 999999999
     USE_TICKS = False
 
-    def test_add_vote(self):
-        self.peers[0].write_to_stdin("vote abc\n")
+    def test_add_others_vote(self):
+        song = "abc"
+        self.peers[0].write_to_stdin("vote "+song+"\n")
         self.peers[1].expect_output("VOTE ADDED", 2)
-        self.peers[0].get_playlist()
+        self.assert_song_in_playlist(self.peers[1].get_playlist(), song)
 
-        time.sleep(2)
+        for peer in self.peers:
+            peer.communicate("q \n")
+
+    def test_add_own_vote(self):
+        song = "abc"
+        self.peers[0].write_to_stdin("vote "+song+"\n")
+        self.peers[0].expect_output("VOTE ADDED", 2)
+        self.assert_song_in_playlist(self.peers[0].get_playlist(), song)
+
+        for peer in self.peers:
+            peer.communicate("q \n")
 
