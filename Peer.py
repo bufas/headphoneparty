@@ -6,6 +6,7 @@ import threading
 from threading import Lock
 from datetime import datetime
 import time
+from Crypto.PublicKey import RSA
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
 import pprint
 
@@ -30,8 +31,6 @@ class Peer(object):
         self.playlist = []
         self.playlistLock = Lock()
 
-        self.clock = Clock(self)
-
         keydist = KeyDistributer()
         self.sk, self.pk, self.pksign = keydist.createKeyPair()
 
@@ -53,6 +52,8 @@ class Peer(object):
 
         self._top = [None] * LOCK_TOP   # [('song', 42 votes), (...)]
         self._toplock = Lock()
+
+        self.clock = Clock(self)
 
     def start(self):
         # Create server
@@ -372,6 +373,9 @@ class Peer(object):
                             playlist_str += "@@"
                         playlist_str += "####"
                     print(playlist_str)
+                continue
+            if "test_create_fake_vote":
+                self._send_msg("VOTE", {'song': 'Justin Bieber', 'vote': self._createVote('Justin Bieber'), 'pk': self.pk, 'pksign': RSA.generate(1024).publickey().exportKey()})
                 continue
             print("Unknown command:", cmd)
 
