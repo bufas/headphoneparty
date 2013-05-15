@@ -11,6 +11,7 @@ import pprint
 
 from KeyDistributer import KeyDistributer
 
+#TODO: Sync TOP list
 from clockSync import Clock
 
 NR_PLAYLISTS_PREFERRED_ON_JOIN = 5
@@ -108,6 +109,7 @@ class Peer(object):
         logging.debug(txt)
         if self._shouldDropMsg(msg_id):
             logging.debug("DROPPEDMSG")
+            print("DROPPED MSG")
         else:
             print(txt)
             if msgtype == "TXTMSG":
@@ -157,6 +159,7 @@ class Peer(object):
 
 
     def _shouldDropMsg(self, msg_id):
+        logging.debug("AA")
         with self.msg_ids_seen_lock:
             if msg_id in self.msg_ids_seen:
                 return True

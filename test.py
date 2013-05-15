@@ -97,6 +97,18 @@ class ClockTest(P2PTestCase):
                 max = logical
 
         self.assertGreaterEqual(50, max-min, "The clocks drifted too far apart")
+    def has_song_with_votes_in_playlist(self, playlist, song):
+        for playlistitem in playlist:
+            if playlistitem['song'] == song:
+                if len(playlistitem['votes']) > 0:
+                    return True
+                return False
+        return False
+
+    def assert_song_in_playlist(self, playlist, song):
+        self.assertTrue(self.has_song_with_votes_in_playlist(playlist,song), "Song " + song + " was expected in playlist")
+
+
 
 class SimpleVisualTest(P2PTestCase):
     NO_OF_PEERS = 10
@@ -186,17 +198,57 @@ class JoinTestsMany(P2PTestCase):
         for peer in self.peers:
             peer.communicate("q \n")
 
+class OutOfRange(P2PTestCase):
+    NO_OF_PEERS = 10
+    RADIO_RANGE = 500
+    USE_TICKS = False
+
+    @unittest.skip("not completed... TODO!")
+    def test_outofrange(self):
+        for i in range(self.NO_OF_PEERS):
+            self.peers[i].setLocation(self,(1,1,1,1))
+        for i in range(len(self.peers)):
+            self.peers[i].write_to_stdin("join\n")
+            self.peers[i].expect_output("GOT PLAYLIST", 2)
+            self.wait_nw_idle()
+        self.peers[2].setLocation(self, (10,10,1,1))        # Move peer 2 away
+        self.peers[3].write_to_stdin("vote LimboSong2\n")
+        self.peers[4].write_to_stdin("vote LimboSong2\n")
+        self.peers[1].setLocation(self,(1,1,1,1))           # Move peer 2 back
+
+class DropMsg(P2PTestCase):
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 500000
+    USE_TICKS = False
+
+    def test_dropmsg(self):
+        for i in range(self.NO_OF_PEERS):
+            self.peers[i].write_to_stdin("join\n")
+            self.peers[i].expect_output("GOT PLAYLIST", 2)
+            self.wait_nw_idle()
+        self.peers[1].write_to_stdin("vote LimboSang2\n")
+        self.peers[1].expect_output("DROPPED MSG",2)
+
 class SimpleVoteTests(P2PTestCase):
     NO_OF_PEERS = 2
     RADIO_RANGE = 999999999
     USE_TICKS = False
 
-    def test_add_vote(self):
-        self.peers[0].write_to_stdin("vote abc\n")
+    def test_add_others_vote(self):
+        song = "abc"
+        self.peers[0].write_to_stdin("vote "+song+"\n")
         self.peers[1].expect_output("VOTE ADDED", 2)
-        self.peers[0].get_playlist()
+        self.assert_song_in_playlist(self.peers[1].get_playlist(), song)
 
-        time.sleep(2)
+        for peer in self.peers:
+            peer.communicate("q \n")
 
+    def test_add_own_vote(self):
+        song = "abc"
+        self.peers[0].write_to_stdin("vote "+song+"\n")
+        self.peers[0].expect_output("VOTE ADDED", 2)
+        self.assert_song_in_playlist(self.peers[0].get_playlist(), song)
 
+        for peer in self.peers:
+            peer.communicate("q \n")
 
