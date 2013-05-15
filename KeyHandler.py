@@ -26,4 +26,4 @@ class KeyHandler():
 
     @staticmethod
     def generateKey():
-        return RSA.generate(2048)
+        return RSA.generate(1024)

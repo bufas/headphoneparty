@@ -1,6 +1,7 @@
 import subprocess
 import threading
 import unittest
+from Crypto.PublicKey import RSA
 from PeerHandler import PeerController
 from PeerHandler import PeerHandler
 from Router import Router
@@ -91,6 +92,25 @@ class P2PTestCase(unittest.TestCase):
     def assert_song_in_playlist(self, playlist, song):
         self.assertTrue(self.has_song_with_votes_in_playlist(playlist,song), "Song " + song + " was expected in playlist")
 
+
+class ClockTest(P2PTestCase):
+    NO_OF_PEERS = 25
+
+    @unittest.skip("deactivated")
+    def test_clock(self):
+        min = -9999
+        max = 2**64
+
+        time.sleep(60000)
+
+        for p in self.peers:
+            logical = p.clock.getLogical()
+            if logical < min:
+                min = logical
+            if logical > max:
+                max = logical
+
+        self.assertGreaterEqual(50, max-min, "The clocks drifted too far apart")
 
 
 class SimpleVisualTest(P2PTestCase):
@@ -234,4 +254,10 @@ class SimpleVoteTests(P2PTestCase):
 
         for peer in self.peers:
             peer.communicate("q \n")
+    def test_invalid_vote(self):
+        #print("\nRSA KEY PEM FORMAT\n" + RSA.generate(1024).publickey().exportKey().decode("utf-8") + "\n")
+        #return
+        self.peers[0].write_to_stdin("test_create_fake_vote\n")
+        playlist = self.peers[0].get_playlist()
+        self.assertEqual(playlist, 0)
 
