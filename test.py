@@ -183,23 +183,22 @@ class OutOfRange(P2PTestCase):
             self.peers[i].expect_output("GOT PLAYLIST", 2)
             self.wait_nw_idle()
         self.peers[2].setLocation(self, (10,10,1,1))        # Move peer 2 away
-        self.peers[3].write_to_stdin("vote LimboSong2")
-        self.peers[4].write_to_stdin("vote LimboSong2")
+        self.peers[3].write_to_stdin("vote LimboSong2\n")
+        self.peers[4].write_to_stdin("vote LimboSong2\n")
         self.peers[1].setLocation(self,(1,1,1,1))           # Move peer 2 back
 
 class DropMsg(P2PTestCase):
-    NO_OF_PEERS = 10
-    RADIO_RANGE = 5000
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 500000
     USE_TICKS = False
 
-    @unittest.skip("vote doesn't work yet.. so .. yea..")
     def test_dropmsg(self):
         for i in range(self.NO_OF_PEERS):
             self.peers[i].write_to_stdin("join\n")
             self.peers[i].expect_output("GOT PLAYLIST", 2)
             self.wait_nw_idle()
-        self.peers[2].write_to_stdin("vote LimboSang2")
-        self.peers[2].expect_output("DROPPED MSG",2)
+        self.peers[1].write_to_stdin("vote LimboSang2\n")
+        self.peers[1].expect_output("DROPPED MSG",2)
 
 class SimpleVoteTests(P2PTestCase):
     NO_OF_PEERS = 2
