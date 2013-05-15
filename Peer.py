@@ -342,15 +342,6 @@ class Peer(object):
             if "play_next" == cmd:
                 self._play_next()
                 continue
-            if "say_timeout" == cmd:
-                print("SAY_TIMEOUT")  # Used for test readline timeout
-                continue
-            if "ping" == cmd:
-                logging.debug("ping")
-                print("pong")
-                logging.debug("pong")
-                sys.stdout.flush()
-                continue
             if "say_quit" == cmd:
                 print("QUITTING")
                 continue
