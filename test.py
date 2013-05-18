@@ -18,6 +18,7 @@ class P2PTestCase(unittest.TestCase):
     RADIO_RANGE = 500
     WORLD_SIZE = {'width': 2000, 'height': 2000}  # in centimeters
     USE_TICKS = False
+    MANUAL_OVERRIDE = True
 
     def setUp(self):
         self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.__class__.NO_OF_PEERS)]
@@ -72,7 +73,7 @@ class P2PTestCase(unittest.TestCase):
                                  % (msg, msg_part))
 
     def create_peer(self, name, host, port):
-        peer = PeerHandler(name, host, port)
+        peer = PeerHandler(name, host, port, self.MANUAL_OVERRIDE)
 
         if peer.process.returncode is not None:
             raise Exception("Peer " + peer.name + " quit immediately ")
@@ -188,6 +189,18 @@ class JoinTests(P2PTestCase):
         for peer in self.peers:
             peer.communicate("q \n")
 
+class JoinTimeoutTests(P2PTestCase):
+    NO_OF_PEERS = 1
+    USE_TICKS = False
+    MANUAL_OVERRIDE = False
+
+    def test_jointimeout_retry(self):
+        self.peers[0].write_to_stdin("join\n")
+        self.peers[0].expect_output("JOIN RETRY", 4)
+        for peer in self.peers:
+            peer.communicate("q \n")
+
+
 class JoinTestsMany(P2PTestCase):
     NO_OF_PEERS = 50
     RADIO_RANGE = 500
@@ -269,3 +282,54 @@ class SimpleVoteTests(P2PTestCase):
         playlist = self.peers[0].get_playlist()
         self.assertEqual(playlist, 0)
 
+class CompareSongs1PeerTests(P2PTestCase):
+    NO_OF_PEERS = 1
+    USE_TICKS = False
+
+    def test_alphabetical_order(self):
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song2)
+
+        top3songs = self.peers[0].get_top3songs()
+        (top1song, _) = top3songs[0]
+        (top2song, _) = top3songs[1]
+        (top3song, _) = top3songs[2]
+        self.assertEqual(top1song, song1)
+        self.assertEqual(top2song, song2)
+        self.assertEqual(top3song, song3)
+
+class CompareSongs3PeersTests(P2PTestCase):
+    NO_OF_PEERS = 3
+    RADIO_RANGE = 99999999
+    USE_TICKS = False
+
+    def test_votecnt_order(self):
+        song3votes = "C"
+        song2votes = "A"
+        song1votes = "B"
+
+        self.peers[0].vote(song3votes)
+        self.peers[1].vote(song3votes)
+        self.peers[2].vote(song3votes)
+
+        self.peers[0].vote(song1votes)
+
+        self.peers[0].vote(song2votes)
+        self.peers[1].vote(song2votes)
+
+        self.wait_nw_idle()
+
+        top3songs = self.peers[0].get_top3songs()
+        (top1song, _) = top3songs[0]
+        (top2song, _) = top3songs[1]
+        (top3song, _) = top3songs[2]
+        self.assertEqual(top1song, song3votes)
+        self.assertEqual(top2song, song2votes)
+        self.assertEqual(top3song, song1votes)
+
+#TODO: Test peers drop identical votes

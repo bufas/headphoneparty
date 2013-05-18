@@ -11,12 +11,11 @@ from threading import Lock
 VERBOSE = True  # Verbose true does not pipe stderr.
 ROUTER_HOST = "127.0.0.1"
 ROUTER_PORT = 8300
-MANUAL_OVERRIDE = True # Disables timed threads in the peers
 
 class PeerHandler(object):
     BUFFER_SIZE = 100
 
-    def __init__(self, name, host, port):
+    def __init__(self, name, host, port, manualOverride):
         self.name, self.host, self.port = name, host, port
         self.x, self.y, self.vecX, self.vecY = None, None, None, None
         self.color = None
@@ -24,7 +23,7 @@ class PeerHandler(object):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
+        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
@@ -109,6 +108,21 @@ class PeerHandler(object):
                         voteslst.append(votedict)
                 playlist.append({'song': song, 'votes': voteslst})
         return playlist
+
+    def get_top3songs(self):
+        self.write_to_stdin("get_top3songs\n")
+        line = self.expect_output("TOP3SONGS###")
+        line = line.strip("TOP3SONGS###").strip()
+        top3 = []
+        for songlistitem in line.split("##"):
+            if not songlistitem == "":
+                [song, votecnt] = songlistitem.split("#")
+                top3.append((song, votecnt))
+        return top3
+
+    def vote(self, song):
+        self.write_to_stdin("vote "+song+"\n")
+        self.expect_output("VOTE ADDED", 2)
 
     def kill(self):
         # Return code is None if process has not finished.
