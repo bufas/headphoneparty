@@ -23,7 +23,7 @@ class PeerHandler(object):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
+        cmd = "python3 -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,

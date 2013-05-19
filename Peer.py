@@ -330,7 +330,7 @@ class Peer(object):
         # Run through all votes for all songs and verify them
         for songDescripter in playlist:
             for vote in songDescripter:
-                if not self._verifyVote(songDescripter['song'], vote):
+                if not self._verifyVote(songDescripter['song_name'], vote):
                     return False
         # Verify the signature on the whole playlist
         return self._verifyPlaylistSignature(pk, playlist, sign)
@@ -376,7 +376,7 @@ class Peer(object):
     def _print_songlist(self, prefix, songlist):
         songlist_str = prefix + "#####"
         for songlistitem in songlist:
-            songlist_str += songlistitem['song'] + "###"
+            songlist_str += songlistitem['song_name'] + "###"
             for vote in songlistitem['votes']:
                 first = True
                 for key in vote.keys():
@@ -431,7 +431,7 @@ class Peer(object):
                             logging.debug("CC")
                             top3str += song + "#" + str(votecnt) + "##"
                     print(top3str)
-                continue;
+                continue
             if "test_create_fake_vote":
                 songName = 'Justin Beaver'
                 fakeVote = {'peer_name': name,
