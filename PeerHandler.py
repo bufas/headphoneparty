@@ -7,6 +7,7 @@ import threading
 from io import BufferedReader
 from collections import deque
 from threading import Lock
+import os
 
 VERBOSE = True  # Verbose true does not pipe stderr.
 ROUTER_HOST = "127.0.0.1"
@@ -23,7 +24,7 @@ class PeerHandler(object):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python3 -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride)
+        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
@@ -93,7 +94,7 @@ class PeerHandler(object):
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
         line = self.expect_output("PLAYLIST#####")
-        line = line.strip("PLAYLIST#####").strip()
+        line = line.replace("#LINEBREAK#", os.linesep).replace("PLAYLIST#####", "").strip()
         playlist = []
         for playlistitem in line.split("####"):
             if not playlistitem == "":
@@ -112,7 +113,7 @@ class PeerHandler(object):
     def get_top3songs(self):
         self.write_to_stdin("get_top3songs\n")
         line = self.expect_output("TOP3SONGS###")
-        line = line.strip("TOP3SONGS###").strip()
+        line = line.replace("TOP3SONGS###", "").strip()
         top3 = []
         for songlistitem in line.split("##"):
             if not songlistitem == "":

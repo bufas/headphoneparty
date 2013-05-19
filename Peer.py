@@ -384,7 +384,7 @@ class Peer(object):
                         songlist_str += "#"
                     else:
                         first = False
-                    songlist_str += key + "#" + vote[key]
+                    songlist_str += key + "#" + vote[key].replace("\n", "#LINEBREAK#")
                 songlist_str += "@@"
             songlist_str += "####"
         print(songlist_str)

@@ -301,6 +301,14 @@ class CompareSongs1PeerTests(P2PTestCase):
         self.assertEqual(top2song, song2)
         self.assertEqual(top3song, song3)
 
+    def test_drop_identical_votes(self):
+        song = "A"
+        self.peers[0].vote(song)
+        self.peers[0].vote(song)
+
+        playlst = self.peers[0].get_playlist()
+        self.assertEqual(len(playlst[0]['votes']), 1)
+
 class CompareSongs3PeersTests(P2PTestCase):
     NO_OF_PEERS = 3
     RADIO_RANGE = 99999999
@@ -329,5 +337,3 @@ class CompareSongs3PeersTests(P2PTestCase):
         self.assertEqual(top1song, song3votes)
         self.assertEqual(top2song, song2votes)
         self.assertEqual(top3song, song1votes)
-
-#TODO: Test peers drop identical votes
