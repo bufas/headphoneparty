@@ -1,4 +1,3 @@
-import base64
 from xmlrpc.client import ServerProxy
 import logging
 import sys
@@ -101,6 +100,7 @@ class Peer(object):
     def _join_timeout(self):
         time.sleep(PLAYLIST_RECV_TIMEOUT_ON_JOIN)
         if not self.hasJoined:
+            print("JOIN RETRY")
             self._join() # Retry
 
     def ReceiveMsg(self, msg_id, sender_peer_name, msgtype, argdict):
@@ -234,7 +234,7 @@ class Peer(object):
                     (songX, votecntX) = self._top[i]
                     if updated_song == songX:
                         inTop = True
-                        self._top[i] = (songX, votecntX+1)
+                        self._top[i] = (songX, new_vote_cnt)
                         break
             if not inTop:
 
@@ -245,15 +245,15 @@ class Peer(object):
                             self._top[i] = (updated_song, new_vote_cnt)
                             break
                 else:
-                    lastTopSongDesc = self._top[LOCK_TOP]
+                    lastTopSongDesc = self._top[LOCK_TOP-1]
                     if self._compare_songs((updated_song, new_vote_cnt), lastTopSongDesc):
-                        self._top[LOCK_TOP] = (updated_song, new_vote_cnt)
+                        self._top[LOCK_TOP -1] = (updated_song, new_vote_cnt)
 
             # Update internally
             for i in range(LOCK_TOP-1, 0, -1):
                 songdescX = self._top[i]
                 songdescY = self._top[i-1]
-                if self._compare_songs(songdescY, songdescX):
+                if self._compare_songs(songdescX, songdescY):
                     self._top[i] = songdescY
                     self._top[i-1] = songdescX
             if not inTop: # => Must have been added
@@ -262,8 +262,10 @@ class Peer(object):
 
     def _compare_songs(self, songdesc1, songdesc2):
         # Returns true if first song has higher rank
-        if not songdesc2 or not songdesc1:
+        if not songdesc2:
             return True
+        if not songdesc1:
+            return False
         (song1, votecnt1) = songdesc1
         (song2, votecnt2) = songdesc2
         if votecnt1 > votecnt2 or (votecnt1 == votecnt2 and song1 < song2):
@@ -292,6 +294,7 @@ class Peer(object):
 
     def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
+            # Authenticate votes
             for vote in song['votes']:
                 self._addVote(song['song_name'], vote)
 
@@ -370,6 +373,22 @@ class Peer(object):
                   'pksign': str(self.key.getPksign())}
         self._send_msg("VOTE", params)
 
+    def _print_songlist(self, prefix, songlist):
+        songlist_str = prefix + "#####"
+        for songlistitem in songlist:
+            songlist_str += songlistitem['song'] + "###"
+            for vote in songlistitem['votes']:
+                first = True
+                for key in vote.keys():
+                    if not first:
+                        songlist_str += "#"
+                    else:
+                        first = False
+                    songlist_str += key + "#" + vote[key]
+                songlist_str += "@@"
+            songlist_str += "####"
+        print(songlist_str)
+
     def _main_loop(self):
         while True:
             cmd = sys.stdin.readline().strip()
@@ -399,21 +418,20 @@ class Peer(object):
                 continue
             if "get_playlist" == cmd:
                 with self.playlistLock:
-                    playlist_str = "PLAYLIST#####"
-                    for playlistitem in self.playlist:
-                        playlist_str += playlistitem['song_name'] + "###"
-                        for vote in playlistitem['votes']:
-                            first = True
-                            for key in vote.keys():
-                                if not first:
-                                    playlist_str += "#"
-                                else:
-                                    first = False
-                                playlist_str += key + "#" + vote[key]
-                            playlist_str += "@@"
-                        playlist_str += "####"
-                    print(playlist_str)
+                    self._print_songlist("PLAYLIST", self.playlist)
                 continue
+            if "get_top3songs" == cmd:
+                with self._toplock:
+                    top3str = "TOP3SONGS###"
+                    for top3item in self._top:
+                        logging.debug("AA")
+                        if top3item:
+                            logging.debug("BB")
+                            (song, votecnt) = top3item
+                            logging.debug("CC")
+                            top3str += song + "#" + str(votecnt) + "##"
+                    print(top3str)
+                continue;
             if "test_create_fake_vote":
                 songName = 'Justin Beaver'
                 fakeVote = {'peer_name': name,
@@ -441,7 +459,7 @@ if __name__ == '__main__':
     port = int(sys.argv[3])
     driverHost = sys.argv[4]
     driverPort = int(sys.argv[5])
-    manualOverride = bool(sys.argv[6])
+    manualOverride = (sys.argv[6] == "True")
 
     peer = Peer(name, host, port, driverHost, driverPort, manualOverride)
     peer.start()
