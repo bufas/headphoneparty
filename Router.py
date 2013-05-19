@@ -46,7 +46,7 @@ class Router:
 
     def start(self):
         # Create server
-        self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler)
+        self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler, logRequests=False)
         self.rpc_server.register_introspection_functions()
 
         # Register RPC functions.
@@ -106,9 +106,9 @@ class Router:
         for peer in peersInRange:
             if peer != immediate_sender_peer:
                 try:
-                    print("INFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
+                    #print("\n\nINFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict) + "\n\n")
                     serverProxy = ServerProxy('http://' + peer.adr())
                     serverProxy.ReceiveMsg(msg_id, peer_name, str(msgtype), argdict)
                 except ConnectionRefusedError:
                     print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
-        print("INFO: Message sent")
+        #print("INFO: Message sent")

@@ -1,3 +1,4 @@
+import base64
 import logging
 import subprocess
 import random
@@ -24,7 +25,7 @@ class PeerHandler(object):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
+        cmd = "python3 -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, MANUAL_OVERRIDE)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
@@ -53,7 +54,7 @@ class PeerHandler(object):
             with self.bufferlock:
                 self.buffer.append(line)
 
-            print("got output (" + self.name + "): " + line)
+            #print("got output (" + self.name + "): " + line)
 
             if "QUITTING" in line:
                 break
@@ -85,7 +86,7 @@ class PeerHandler(object):
             else:
                 if msg in line:
                     return line
-            if timeout > 0 and acc_sleep_time >= timeout:
+            if 0 < timeout <= acc_sleep_time:
                 raise subprocess.TimeoutExpired(msg, timeout)
 
     def expect_ready(self):
@@ -177,20 +178,20 @@ class PeerController():
                 self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
 
     def findPeersInRange(self, peer):
-        print()
-        if peer.color:
-            print('Finding peers in range of ' + peer.name + '(' + peer.color + ')')
-        else:
-            print('Finding peers in range of ' + peer.name)
+        # print()
+        # if peer.color:
+        #     print('Finding peers in range of ' + peer.name + '(' + peer.color + ')')
+        # else:
+        #     print('Finding peers in range of ' + peer.name)
         peersInRange = []
         meX = peer.x
         meY = peer.y
         for opeer in self.peers:
             if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
-                if opeer.color:
-                    print(opeer.name + '(' + opeer.color + ') is in range')
-                else:
-                    print(opeer.name + ' is in range')
+                # if opeer.color:
+                #     print(opeer.name + '(' + opeer.color + ') is in range')
+                # else:
+                #     print(opeer.name + ' is in range')
                 peersInRange.append(opeer)
 
         return peersInRange

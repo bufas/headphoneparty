@@ -1,7 +1,6 @@
 import subprocess
 import threading
 import unittest
-from Crypto.PublicKey import RSA
 from PeerHandler import PeerController
 from PeerHandler import PeerHandler
 from Router import Router
@@ -188,8 +187,8 @@ class JoinTests(P2PTestCase):
             peer.communicate("q \n")
 
 class JoinTestsMany(P2PTestCase):
-    NO_OF_PEERS = 50
-    RADIO_RANGE = 500
+    NO_OF_PEERS = 10
+    RADIO_RANGE = 5000000000000
     USE_TICKS = False
 
     def test_join(self):
@@ -254,10 +253,10 @@ class SimpleVoteTests(P2PTestCase):
 
         for peer in self.peers:
             peer.communicate("q \n")
+
     def test_invalid_vote(self):
-        #print("\nRSA KEY PEM FORMAT\n" + RSA.generate(1024).publickey().exportKey().decode("utf-8") + "\n")
-        #return
         self.peers[0].write_to_stdin("test_create_fake_vote\n")
         playlist = self.peers[0].get_playlist()
-        self.assertEqual(playlist, 0)
+        print(playlist)
+        self.assertEqual(playlist, [])
 

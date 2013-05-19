@@ -1,3 +1,4 @@
+import base64
 from xmlrpc.client import ServerProxy
 import logging
 import sys
@@ -7,7 +8,8 @@ from threading import Lock
 from threading import RLock
 from datetime import datetime
 import time
-from Crypto.PublicKey import RSA
+from Crypto.Hash import SHA256
+from KeyHandler import KeyHandler
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
 
 from KeyDistributer import KeyDistributer
@@ -26,12 +28,12 @@ class Peer(object):
         self.driverHost, self.driverPort = driverHost, driverPort
         self.manualOverride = manualOverride
 
-        # [{'song': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'vote': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'vote': '...', ...}]]
+        # [{'song_name': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'sig': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'sig': '...', ...}]]
         self.playlist = []
         self.playlistLock = Lock()
 
         keydist = KeyDistributer()
-        self.sk, self.pk, self.pksign = keydist.createKeyPair()
+        self.key = keydist.getKeyPair()
 
         self.msg_count = 0
         self.MSG_IDS_SEEN_MAXSIZE = 1000
@@ -54,7 +56,7 @@ class Peer(object):
 
     def start(self):
         # Create server
-        self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler)
+        self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler, logRequests=False)
         self.rpc_server.register_introspection_functions()
 
         # Register RPC functions.
@@ -104,27 +106,35 @@ class Peer(object):
     def ReceiveMsg(self, msg_id, sender_peer_name, msgtype, argdict):
         # For some reason argdict values has turned into lists
         txt = self.name + ": GOTMSG of type " + msgtype + " from peer " + sender_peer_name + ": " + str(argdict)
-        logging.debug(txt)
+        #logging.debug(txt)
         if self._shouldDropMsg(msg_id):
             logging.debug("DROPPEDMSG")
             print("DROPPED MSG")
         else:
             print(txt)
             if msgtype == "TXTMSG":
-                self._handleTextMessage(sender_peer_name, str(argdict['msg']))
+                self._handleTextMessage(sender_peer_name,
+                                        str(argdict['msg']))
             elif msgtype == "VOTE":
                 logging.debug("HANDLE VOTE")
                 self._forward_msg(msg_id, sender_peer_name, msgtype, argdict) # Forward
-                self._handleVote(sender_peer_name, str(argdict['song']), str(argdict['vote']), str(argdict['pk']), str(argdict['pksign']))
+                self._handleVote(argdict['song_name'],
+                                 argdict['vote'])
             elif msgtype == "VOTES":
-                self._handleVotes(str(argdict['song']), argdict['votes'])
+                self._handleVotes(str(argdict['song_name']),
+                                  argdict['votes'])
             elif msgtype == "GETLIST":
-                logging.debug("GETLIST!")
+                #logging.debug("GETLIST!")
                 self._send_playlist(argdict['request_id'])
             elif msgtype == "PLAYLIST":
-                logging.debug("PLAYLIST!")
+                #logging.debug("PLAYLIST!")
                 print("GOT PLAYLIST")
-                self._handle_playlist(sender_peer_name, argdict['request_id'], argdict['playlist'], argdict['sign'], argdict['pk'], argdict['pksign'])
+                self._handle_playlist(sender_peer_name,
+                                      argdict['request_id'],
+                                      argdict['playlist'],
+                                      argdict['sign'],
+                                      argdict['pk'],
+                                      argdict['pksign'])
             elif msgtype == "CLOCKSYNC":
                 (t, s) = argdict['message']
                 self.clock.recv(t, s)
@@ -145,9 +155,9 @@ class Peer(object):
                     maxcnt = 0
                     maxsong = None
                     for playlistitem in self.playlist:
-                        if self._compare_songs((playlistitem['song'], len(playlistitem['votes'])), (maxsong, maxcnt)):
+                        if self._compare_songs((playlistitem['song_name'], len(playlistitem['votes'])), (maxsong, maxcnt)):
                             maxcnt = len(playlistitem['votes'])
-                            maxsong = playlistitem['song']
+                            maxsong = playlistitem['song_name']
                     if maxsong:
                         self._flush_top(maxsong, maxcnt)
 
@@ -171,23 +181,28 @@ class Peer(object):
             self._addMsgId(msg_id)
             return False
 
-    def _shout_votes(self, song):
+    def _shout_votes(self, songName):
         for playlistitem in self.playlist:
-            if playlistitem['song'] == song:
-                self._send_msg("VOTES", {'song': song, 'votes': playlistitem['votes']})
+            if playlistitem['song_name'] == songName:
+                self._send_msg("VOTES", {'song_name': songName, 'votes': playlistitem['votes']})
                 break
 
     def _send_playlist(self, request_id):
-        self._send_msg("PLAYLIST", {'request_id': request_id, 'playlist': self.playlist, 'sign': self._sign(self.playlist), 'pk': self.pk, 'pksign': self.pksign})
+        params = {'request_id': request_id,
+                  'playlist': self.playlist,
+                  'sign': self._signPlaylist(self.playlist),
+                  'pk': self.key.getPublicKey(),
+                  'pksign': self.key.getPksign()}
+        self._send_msg("PLAYLIST", params)
 
     def _handle_playlist(self, sender_peer_name, request_id, playlist, sign, pk, pksign):
         #TODO: Improve verification of playlist
         if self.playlist_request_id:
             if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, sign, pk):
                 if self.playlist_request_id == request_id:
-                    logging.debug("A")
+                    #logging.debug("A")
                     self._updatePlaylist(playlist)
-                    logging.debug("B")
+                    #logging.debug("B")
                     self.playlists_received += 1
                     if self.playlists_received > NR_PLAYLISTS_PREFERRED_ON_JOIN:
                         self.hasJoined = True
@@ -198,16 +213,15 @@ class Peer(object):
     def _handleTextMessage(self, sender_peer_name, msg):
         logging.debug("Handling Text Message")
 
-    def _handleVote(self, sender_peer_name, song, vote, pk, pksign):
-        #Where vote is a signature on the song name
+    def _handleVote(self, songName, vote):
         print("##################HANDLING VOTE###############")
-        if self._verifyPK(pk, pksign) and self._verifyVote(song, vote, pk, pksign):
-            self._addVote(song, sender_peer_name, vote, pk, pksign)
+        if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(songName, vote):
+            self._addVote(songName, vote)
 
-    def _handleVotes(self, song, votes):
+    def _handleVotes(self, songName, votes):
         # Merge votes
         for vote in votes:
-            self._addVote(song, vote['peer_name'], vote['vote'], vote['pk'], vote['pksign'])
+            self._addVote(songName, vote)
 
 
 
@@ -256,58 +270,74 @@ class Peer(object):
             return True
         return False
 
-    def _addVote(self, song, peer_name, vote, pk, pksign):
+    def _addVote(self, songName, vote):
         #Verify vote
-        if self._verifyPK(pk, pksign) and \
-           self._verifyVote(song, vote, pk, pksign):
+        if self._verifyVote(songName, vote):
             # If exists
             added = False
 
             for playlistitem in self.playlist:
-                if playlistitem['song'] == song:
-                    if not peer_name in [vote['peer_name'] for vote in playlistitem['votes']]:
+                if playlistitem['song_name'] == songName:
+                    if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
                         # The vote is not in the list, add it
-                        playlistitem['votes'].append({'peer_name': peer_name, 'vote': vote, 'pk': pk, 'pksign': pksign})
-                        self._flush_top(song, len(playlistitem['votes']))
+                        playlistitem['votes'].append(vote)
+                        self._flush_top(songName, len(playlistitem['votes']))
                     added = True
                     break
             if not added:
-                self.playlist.append({'song': song, 'votes': [{'peer_name': peer_name, 'vote': vote, 'pk': pk, 'pksign': pksign}]})
-                self._flush_top(song, 1)
+                self.playlist.append({'song_name': songName, 'votes': [vote]})
+                self._flush_top(songName, 1)
 
         print("VOTE ADDED")
 
     def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
-            # Authenticate votes
             for vote in song['votes']:
-                if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(song['song'], vote['vote'], vote['pk'], vote['pksign']):
-                    # Vote is authentic, add it
-                    self._addVote(song['song'], vote['peer_name'], vote['vote'], vote['pk'], vote['pksign'])
-                else:
-                    # This guy is a cheater
-                    # TODO sound the alarm
-                    pass
+                self._addVote(song['song_name'], vote)
 
     def _sign(self, obj):
-        #TODO
-        return ""
+        return self.key.signMessage(obj)
+
+    def _signPlaylist(self, playlist):
+        playlistHash = self._hashOfPlaylist(playlist)
+        return str(self.key.getKey().sign(playlistHash, None)[0])
+
+    def _verifyPlaylistSignature(self, pk, playlist, sig):
+        playlistHash = self._hashOfPlaylist(playlist)
+        return KeyHandler.keyFromString(pk).verify(playlistHash, (int(sig), None))
+
+    def _hashOfPlaylist(self, playlist):
+        result = SHA256.new()
+        for songDescriptor in playlist:
+            result.update(songDescriptor['song_name'].encode())
+            for vote in songDescriptor['votes']:
+                result.update(vote['peer_name'].encode())
+                result.update(vote['sig'].encode())
+                result.update(vote['pk'])
+                result.update(vote['pksign'].encode())
+        return result.digest()
 
     def _verifyPK(self, pk, pksign):
-        #TODO: verify signature on PK
-        return True
+        return self.key.verifyPublicKey(pk, int(pksign))
 
-    def _verifyVote(self, song, vote, pk, pksign):
-        #TODO: verify signature
-        return True
+    def _verifyVote(self, songName, vote):
+        return self.key.verifyMessage(vote['pk'], songName, vote['sig']) and self._verifyPK(vote['pk'], vote['pksign'])
 
     def _verifyPlaylist(self, playlist, sign, pk):
-        #TODO
-        return True
+        # Run through all votes for all songs and verify them
+        for songDescripter in playlist:
+            for vote in songDescripter:
+                if not self._verifyVote(songDescripter['song'], vote):
+                    return False
+        # Verify the signature on the whole playlist
+        return self._verifyPlaylistSignature(pk, playlist, sign)
 
-    def _createVote(self, song):
-        #TODO: sign
-        return song
+    def _createVote(self, songName):
+        """Creates a vote for a specific song"""
+        return {'peer_name': self.name,
+                'sig': str(self.key.signMessage(songName)),
+                'pk': self.key.getPublicKey(),
+                'pksign': str(self.key.getPksign())}
 
 
     def _forward_msg(self, msg_id, sender_peer_name, msgtype, argdict):
@@ -333,7 +363,12 @@ class Peer(object):
         s = ServerProxy('http://' + self.driverHost + ':' + str(self.driverPort))
         s.forwardMessage(self.name, msg_id, sender_peer_name, msgtype, argdict)
 
-
+    def _sendVote(self, songName, vote):
+        params = {'song_name': songName,
+                  'vote': vote,
+                  'pk': self.key.getPublicKey(),
+                  'pksign': str(self.key.getPksign())}
+        self._send_msg("VOTE", params)
 
     def _main_loop(self):
         while True:
@@ -348,10 +383,10 @@ class Peer(object):
                 continue
             match = re.match(r'vote (\S+)', cmd)
             if match:
-                song = match.group(1)
-                vote = self._createVote(song)
-                self._addVote(song, self.name, vote, self.pk, self.pksign)
-                self._send_msg("VOTE", {'song': song, 'vote': vote, 'pk': self.pk, 'pksign': self.pksign})
+                songName = match.group(1)
+                vote = self._createVote(songName)
+                self._addVote(songName, vote)
+                self._sendVote(songName, vote)
                 continue
             if "join" == cmd:
                 self._join()
@@ -366,7 +401,7 @@ class Peer(object):
                 with self.playlistLock:
                     playlist_str = "PLAYLIST#####"
                     for playlistitem in self.playlist:
-                        playlist_str += playlistitem['song'] + "###"
+                        playlist_str += playlistitem['song_name'] + "###"
                         for vote in playlistitem['votes']:
                             first = True
                             for key in vote.keys():
@@ -380,7 +415,12 @@ class Peer(object):
                     print(playlist_str)
                 continue
             if "test_create_fake_vote":
-                self._send_msg("VOTE", {'song': 'Justin Bieber', 'vote': self._createVote('Justin Bieber'), 'pk': self.pk, 'pksign': RSA.generate(1024).publickey().exportKey()})
+                songName = 'Justin Beaver'
+                fakeVote = {'peer_name': name,
+                            'sig': str(self.key.signMessage(songName)),
+                            'pk': self.key.getPublicKey(),
+                            'pksign': self.key.getPksign()}
+                self._sendVote(songName, fakeVote)
                 continue
             print("Unknown command:", cmd)
 
