@@ -361,9 +361,7 @@ class Peer(object):
 
     def _sendVote(self, songName, vote):
         params = {'song_name': songName,
-                  'vote': vote,
-                  'pk': self.key.getPublicKey(),
-                  'pksign': self.key.getPksign()}
+                  'vote': vote}
         self._send_msg("VOTE", params)
 
     def _print_songlist(self, prefix, songlist):
