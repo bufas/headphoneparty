@@ -260,6 +260,7 @@ class SimpleVoteTests(P2PTestCase):
         song = "abc"
         self.peers[0].write_to_stdin("vote "+song+"\n")
         self.peers[1].expect_output("VOTE ADDED", 2)
+        print(self.peers[0].get_playlist())
         self.assert_song_in_playlist(self.peers[1].get_playlist(), song)
 
         for peer in self.peers:
@@ -269,6 +270,7 @@ class SimpleVoteTests(P2PTestCase):
         song = "abc"
         self.peers[0].write_to_stdin("vote "+song+"\n")
         self.peers[0].expect_output("VOTE ADDED", 2)
+        print(self.peers[0].get_playlist())
         self.assert_song_in_playlist(self.peers[0].get_playlist(), song)
 
         for peer in self.peers:
@@ -276,9 +278,11 @@ class SimpleVoteTests(P2PTestCase):
 
     def test_invalid_vote(self):
         self.peers[0].write_to_stdin("test_create_fake_vote\n")
-        playlist = self.peers[0].get_playlist()
-        print(playlist)
-        self.assertEqual(playlist, [])
+        self.peers[1].expect_output("VOTE REJECTED", 2)
+        self.assertEqual(self.peers[1].get_playlist(), [])
+
+        for peer in self.peers:
+            peer.communicate("q \n")
 
 class CompareSongs1PeerTests(P2PTestCase):
     NO_OF_PEERS = 1
