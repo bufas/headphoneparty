@@ -1,9 +1,11 @@
+import random
 import subprocess
 import threading
 import unittest
 from Crypto.PublicKey import RSA
 from PeerHandler import PeerController
 from PeerHandler import PeerHandler
+import PeerHandler
 from Router import Router
 from Visualizer import Visualizer
 import time
@@ -564,3 +566,43 @@ class TopSyncTests(P2PTestCase):
         votingpeers = [vote['peer_name'] for vote in playlist[0]['votes']]
         self.assertTrue(self.peers[0].name in votingpeers)
         self.assertTrue(self.peers[1].name in votingpeers)
+
+class RandomVoting(P2PTestCase):
+    NO_OF_PEERS = 25
+    RADIO_RANGE = 9999999999
+    USE_TICKS = False
+    peersKilled = 0
+
+    songs = {"A":0,"B":0,"C":0,
+             "D":0,"E":0,"F":0}
+
+    @unittest.skip("deactivated")
+    def test_randomVotes(self):
+        for x in self.peers:
+            if random.randint(0,100) < 75:
+                songNo = random.randint(0,5)
+                songOfChoice = list(self.songs.keys())[songNo]
+                x.vote(songOfChoice)
+                self.songs[songOfChoice] += 1
+            if random.randint(0,100) < 75:
+                self.peer_controller.movePeers()
+            if random.randint(0,100) < 25:
+                x.kill()
+                self.peersKilled += 1
+                x = self.create_peer("P%d" % str(self.NO_OF_PEERS + self.peersKilled), "127.0.0.1",
+                                     8500 + self.NO_OF_PEERS + self.peersKilled)
+                x.write_to_stdin("join\n")
+
+
+        self.wait_nw_idle()
+        #sorted_songs = sorted(self.songs.items(), key=lambda x: x[1])
+
+        #print(sorted_songs)
+
+        for x in self.peers:
+            playlist = x.get_playlist()
+            for key,value in self.songs.items():
+                for j in playlist:
+                    if j['song_name'] == key:
+                        self.assertEqual(len(j['votes']), value)
+
