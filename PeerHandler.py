@@ -16,7 +16,7 @@ ROUTER_PORT = 8300
 class PeerHandler(object):
     BUFFER_SIZE = 100
 
-    def __init__(self, name, host, port, manualOverride):
+    def __init__(self, name, host, port, manualOverride, clockSync):
         self.name, self.host, self.port = name, host, port
         self.x, self.y, self.vecX, self.vecY = None, None, None, None
         self.color = None
@@ -24,7 +24,7 @@ class PeerHandler(object):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python -u Peer.py %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride)
+        cmd = "python -u Peer.py %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
@@ -122,6 +122,12 @@ class PeerHandler(object):
                 [song, votecnt] = songlistitem.split("#")
                 top3.append((song, votecnt))
         return top3
+
+    def get_logicalClock(self):
+        self.write_to_stdin("get_logical_clock\n")
+        line = self.expect_output("LOGICALCLOCK#")
+        clock = int(line.replace("LOGICALCLOCK#", "").strip())
+        return clock
 
     def vote(self, song):
         self.write_to_stdin("vote "+song+"\n")

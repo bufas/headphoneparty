@@ -10,7 +10,6 @@ import time
 from Crypto.Hash import SHA256
 from KeyHandler import KeyHandler
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
-import os
 
 from KeyDistributer import KeyDistributer
 
@@ -23,10 +22,10 @@ OUT_OF_RANGE_TIME_LIMIT = 60 #secs
 LOCK_TOP = 3
 
 class Peer(object):
-    def __init__(self, name, host, port, driverHost, driverPort, manualOverride):
+    def __init__(self, name, host, port, driverHost, driverPort, manualOverride, clockSyncActive):
         self.name, self.host, self.port = name, host, port
         self.driverHost, self.driverPort = driverHost, driverPort
-        self.manualOverride = manualOverride
+        self.manualOverride, self.clockSyncActive = manualOverride, clockSyncActive
 
         # [{'song_name': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'sig': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'sig': '...', ...}]]
         self.playlist = []
@@ -52,7 +51,7 @@ class Peer(object):
         self._top = [None] * LOCK_TOP   # [('song', 42 votes), (...)]
         self._toplock = RLock()
 
-        self.clock = Clock(self)
+        self.clock = Clock(self, sync=self.clockSyncActive)
 
     def start(self):
         # Create server
@@ -438,13 +437,16 @@ class Peer(object):
                             top3str += song + "#" + str(votecnt) + "##"
                     print(top3str)
                 continue
-            if "test_create_fake_vote":
+            if "test_create_fake_vote" == cmd:
                 songName = 'Justin Beaver'
                 fakeVote = {'peer_name': self.name,
                             'sig': str(self.key.signMessage(songName)),
                             'pk': self.key.getPublicKey(),
                             'pksign': '0'}
                 self._sendVote(songName, fakeVote)
+                continue
+            if "get_logical_clock" == cmd:
+                print("LOGICALCLOCK#" + str(self.clock.getLogical()))
                 continue
             print("Unknown command:", cmd)
 
@@ -466,6 +468,7 @@ if __name__ == '__main__':
     driverHost = sys.argv[4]
     driverPort = int(sys.argv[5])
     manualOverride = (sys.argv[6] == "True")
+    clockSync = (sys.argv[7] == "True")
 
-    peer = Peer(name, host, port, driverHost, driverPort, manualOverride)
+    peer = Peer(name, host, port, driverHost, driverPort, manualOverride, clockSync)
     peer.start()

@@ -18,6 +18,7 @@ class P2PTestCase(unittest.TestCase):
     RADIO_RANGE = 500
     WORLD_SIZE = {'width': 2000, 'height': 2000}  # in centimeters
     USE_TICKS = False
+    CLOCK_SYNC = False
     MANUAL_OVERRIDE = True
 
     def setUp(self):
@@ -73,7 +74,7 @@ class P2PTestCase(unittest.TestCase):
                                  % (msg, msg_part))
 
     def create_peer(self, name, host, port):
-        peer = PeerHandler(name, host, port, self.MANUAL_OVERRIDE)
+        peer = PeerHandler(name, host, port, self.MANUAL_OVERRIDE, self.CLOCK_SYNC)
 
         if peer.process.returncode is not None:
             raise Exception("Peer " + peer.name + " quit immediately ")
@@ -97,16 +98,16 @@ class P2PTestCase(unittest.TestCase):
 
 class ClockTest(P2PTestCase):
     NO_OF_PEERS = 25
+    CLOCK_SYNC = True
 
-    @unittest.skip("deactivated")
     def test_clock(self):
-        min = -9999
-        max = 2**64
+        min = 2**64
+        max = -9999
 
-        time.sleep(60000)
+        time.sleep(60)
 
         for p in self.peers:
-            logical = p.clock.getLogical()
+            logical = p.get_logicalClock()
             if logical < min:
                 min = logical
             if logical > max:
