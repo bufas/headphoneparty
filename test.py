@@ -222,22 +222,61 @@ class JoinTestsMany(P2PTestCase):
             peer.communicate("q \n")
 
 class OutOfRange(P2PTestCase):
-    NO_OF_PEERS = 10
-    RADIO_RANGE = 500
+    NO_OF_PEERS = 6
+    RADIO_RANGE = 1
     USE_TICKS = False
 
-    @unittest.skip("not completed... TODO!")
     def test_outofrange(self):
+        song1 = "LimboSong1"
+        song2 = "LimboSong2"
+
         for i in range(self.NO_OF_PEERS):
-            self.peers[i].setLocation(self,(1,1,1,1))
+            self.peers[i].setLocation((1,1,1,1))
+
         for i in range(len(self.peers)):
             self.peers[i].write_to_stdin("join\n")
-            self.peers[i].expect_output("GOT PLAYLIST", 1)
-            self.wait_nw_idle()
-        self.peers[2].setLocation(self, (10,10,1,1))        # Move peer 2 away
-        self.peers[3].write_to_stdin("vote LimboSong2\n")
-        self.peers[4].write_to_stdin("vote LimboSong2\n")
-        self.peers[1].setLocation(self,(1,1,1,1))           # Move peer 2 back
+            for j in range(len(self.peers)-1):
+                self.peers[i].expect_output("GOT PLAYLIST", 2)
+        self.wait_nw_idle()
+
+        self.peers[5].setLocation((5,5,1,1))        # Move peer 2 away
+
+        self.peers[0].vote(song1)
+        self.peers[1].vote(song1)
+        self.peers[2].vote(song2)
+        self.wait_nw_idle()
+
+        # CONSISTENCY CHECK
+        playlist5 = self.peers[5].get_playlist()
+        self.assertEqual(playlist5, [])
+
+        # CONSISTENCY CHECK
+        for i in range(len(self.peers)-1):
+            playlist = self.peers[i].get_playlist()
+            self.assert_song_in_playlist(playlist, song1)
+            self.assert_song_in_playlist(playlist, song2)
+            songfound = False
+            for song in playlist:
+                if song['song_name'] == song1:
+                    songfound = True
+                    self.assertEqual(len(song['votes']),2)
+            self.assertTrue(songfound)
+
+        self.peers[5].setLocation((1,1,1,1))           # Move peer 2 back
+        self.peers[5].write_to_stdin("join\n")
+        for i in range(len(self.peers)-1):
+            self.peers[5].expect_output("GOT PLAYLIST", 2)
+
+        playlist = self.peers[5].get_playlist()
+        self.assert_song_in_playlist(playlist, song1)
+        self.assert_song_in_playlist(playlist, song2)
+        songfound = False
+        for song in playlist:
+            if song['song_name'] == song1:
+                songfound = True
+                self.assertEqual(len(song['votes']),2)
+        self.assertTrue(songfound)     
+
 
 class DropMsg(P2PTestCase):
     NO_OF_PEERS = 2
@@ -486,3 +525,42 @@ class TopSyncTests(P2PTestCase):
         playlist = self.peers[1].get_playlist()
         self.assertEqual(len(playlist), 1)
         self.assertEqual(playlist[0]['song_name'], song4)
+
+
+    def test_received_top_votes_merged(self):
+        # Assumes TOP _3_
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+        song4 = "D"
+        
+        # Ensure P1 does not see votes
+        self.peers[0].setLocation((1,1,1,1))
+        self.peers[1].setLocation((10,10,1,1))
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song4)
+
+        self.peers[1].vote(song4)
+
+        self.wait_nw_idle()
+        # Ensure votes is not older than this point
+        self.peers[0].clearBuffer()
+        self.peers[1].clearBuffer()
+
+        # Move closer
+        self.peers[1].setLocation((1,1,1,1))
+
+        # Play, wait until votes received
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[1].expect_output("GOT VOTESLIST", 2)
+
+        # Check votes merged (since was out of range, these are the only ones)
+        playlist = self.peers[1].get_playlist()
+        self.assertEqual(len(playlist[0]['votes']), 2) # 2 votes in song4
+        
+        votingpeers = [vote['peer_name'] for vote in playlist[0]['votes']]
+        self.assertTrue(self.peers[0].name in votingpeers)
+        self.assertTrue(self.peers[1].name in votingpeers)

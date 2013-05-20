@@ -122,7 +122,6 @@ class Peer(object):
                 self._handleVotes(str(argdict['song_name']),
                                   argdict['votes'])
             elif msgtype == "GETLIST":
-                #logging.debug("GETLIST!")
                 self._send_playlist(argdict['request_id'])
             elif msgtype == "PLAYLIST":
                 #logging.debug("PLAYLIST!")
@@ -130,7 +129,6 @@ class Peer(object):
                 self._handle_playlist(sender_peer_name,
                                       argdict['request_id'],
                                       argdict['playlist'],
-                                      argdict['sign'],
                                       argdict['pk'],
                                       argdict['pksign'])
             elif msgtype == "CLOCKSYNC":
@@ -200,15 +198,14 @@ class Peer(object):
     def _send_playlist(self, request_id):
         params = {'request_id': request_id,
                   'playlist': self.playlist,
-                  'sign': self._signPlaylist(self.playlist),
                   'pk': self.key.getPublicKey(),
                   'pksign': self.key.getPksign()}
         self._send_msg("PLAYLIST", params)
 
-    def _handle_playlist(self, sender_peer_name, request_id, playlist, sign, pk, pksign):
+    def _handle_playlist(self, sender_peer_name, request_id, playlist, pk, pksign):
         #TODO: Improve verification of playlist
         if self.playlist_request_id:
-            if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, sign, pk):
+            if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, pk):
                 if self.playlist_request_id == request_id:
                     #logging.debug("A")
                     self._updatePlaylist(playlist)
@@ -306,14 +303,6 @@ class Peer(object):
     def _sign(self, obj):
         return self.key.signMessage(obj)
 
-    def _signPlaylist(self, playlist):
-        playlistHash = self._hashOfPlaylist(playlist)
-        return str(self.key.getKey().sign(playlistHash, None)[0])
-
-    def _verifyPlaylistSignature(self, pk, playlist, sig):
-        playlistHash = self._hashOfPlaylist(playlist)
-        return KeyHandler.keyFromString(pk).verify(playlistHash, (int(sig), None))
-
     def _hashOfPlaylist(self, playlist):
         result = SHA256.new()
         for songDescriptor in playlist:
@@ -331,14 +320,13 @@ class Peer(object):
     def _verifyVote(self, songName, vote):
         return self.key.verifyMessage(vote['pk'], songName, vote['sig']) and self._verifyPK(vote['pk'], vote['pksign'])
 
-    def _verifyPlaylist(self, playlist, sign, pk):
+    def _verifyPlaylist(self, playlist, pk):
         # Run through all votes for all songs and verify them
         for songDescripter in playlist:
-            for vote in songDescripter:
+            for vote in songDescripter['votes']:
                 if not self._verifyVote(songDescripter['song_name'], vote):
                     return False
-        # Verify the signature on the whole playlist
-        return self._verifyPlaylistSignature(pk, playlist, sign)
+        return True
 
     def _createVote(self, songName):
         """Creates a vote for a specific song"""
