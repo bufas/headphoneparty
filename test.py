@@ -85,7 +85,7 @@ class P2PTestCase(unittest.TestCase):
 
     def has_song_with_votes_in_playlist(self, playlist, song):
         for playlistitem in playlist:
-            if playlistitem['song'] == song:
+            if playlistitem['song_name'] == song:
                 if len(playlistitem['votes']) > 0:
                     return True
                 return False
@@ -301,6 +301,26 @@ class CompareSongs1PeerTests(P2PTestCase):
         self.assertEqual(top2song, song2)
         self.assertEqual(top3song, song3)
 
+    def test_move_song_to_top3(self):
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+        song4 = "D"
+
+        self.peers[0].vote(song2)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song4)
+        self.peers[0].vote(song1)
+
+        top3songs = self.peers[0].get_top3songs()
+        (top1song, _) = top3songs[0]
+        (top2song, _) = top3songs[1]
+        (top3song, _) = top3songs[2]
+        self.assertEqual(top1song, song1)
+        self.assertEqual(top2song, song2)
+        self.assertEqual(top3song, song3)
+
+
     def test_drop_identical_votes(self):
         song = "A"
         self.peers[0].vote(song)
@@ -337,3 +357,127 @@ class CompareSongs3PeersTests(P2PTestCase):
         self.assertEqual(top1song, song3votes)
         self.assertEqual(top2song, song2votes)
         self.assertEqual(top3song, song1votes)
+
+class PlaySongTests(P2PTestCase):
+    NO_OF_PEERS = 1
+    USE_TICKS = False
+
+    def test_play_right_song(self):
+        song1 = "A"
+        song2 = "B"
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[0].expect_output("PLAYING " + song1, 2)
+
+    def test_remove_played_song(self):
+        song1 = "A"
+        song2 = "B"
+        initial_nr_of_songs = 2
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[0].expect_output("PLAYING " + song1, 2)
+
+        # TOP 3
+        top3songs = self.peers[0].get_top3songs()
+        self.assertEqual(len(top3songs), initial_nr_of_songs - 1)
+
+        (nextsong, _) = top3songs[0]
+        self.assertEqual(nextsong, song2)
+
+        # Playlist
+        playlist = self.peers[0].get_playlist()
+        self.assertEqual(len(playlist), initial_nr_of_songs - 1)
+        self.assertEqual(playlist[0]['song_name'], song2)
+        
+
+    def test_add_new_song_top3_on_play(self):
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+        song4 = "D"
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song4)
+
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[0].expect_output("PLAYING " + song1, 2)
+
+        top3songs = self.peers[0].get_top3songs()
+        (top1song, _) = top3songs[0]
+        (top2song, _) = top3songs[1]
+        (top3song, _) = top3songs[2]
+        self.assertEqual(top1song, song2)
+        self.assertEqual(top2song, song3)
+        self.assertEqual(top3song, song4)
+
+class TopSyncTests(P2PTestCase):
+    NO_OF_PEERS = 2
+    RADIO_RANGE = 5
+    USE_TICKS = False
+
+    def test_send_top_votes(self):
+        # Assumes TOP _3_
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+        song4 = "D"
+
+        # Ensure in range
+        self.peers[0].setLocation((1,1,1,1))
+        self.peers[1].setLocation((1,1,1,1))
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song4)
+
+        self.wait_nw_idle()
+        # Ensure votes is not older than this point
+        self.peers[0].clearBuffer()
+        self.peers[1].clearBuffer()
+
+        # Play, and see if votes for next song (D) is sent to other peer
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[0].expect_output("SHOUTING VOTES", 2)
+        self.peers[1].expect_output("GOT VOTESLIST of " + song4, 2)
+
+    def test_received_top_songs_merged(self):
+        # Assumes TOP _3_
+        song1 = "A"
+        song2 = "B"
+        song3 = "C"
+        song4 = "D"
+        
+        # Ensure P1 does not see votes
+        self.peers[0].setLocation((1,1,1,1))
+        self.peers[1].setLocation((10,10,1,1))
+
+        self.peers[0].vote(song1)
+        self.peers[0].vote(song2)
+        self.peers[0].vote(song3)
+        self.peers[0].vote(song4)
+
+        self.wait_nw_idle()
+        # Ensure votes is not older than this point
+        self.peers[0].clearBuffer()
+        self.peers[1].clearBuffer()
+
+        # Move closer
+        self.peers[1].setLocation((1,1,1,1))
+
+        # Play, wait until votes received
+        self.peers[0].write_to_stdin("play_next\n")
+        self.peers[1].expect_output("GOT VOTESLIST", 2)
+
+        # Check songs merged (since was out of range, these are the only ones)
+        playlist = self.peers[1].get_playlist()
+        self.assertEqual(len(playlist), 1)
+        self.assertEqual(playlist[0]['song_name'], song4)

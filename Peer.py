@@ -10,6 +10,7 @@ import time
 from Crypto.Hash import SHA256
 from KeyHandler import KeyHandler
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
+import os
 
 from KeyDistributer import KeyDistributer
 
@@ -49,7 +50,7 @@ class Peer(object):
         self._time_since_last_msg_lock = Lock()
 
         self._top = [None] * LOCK_TOP   # [('song', 42 votes), (...)]
-        self._toplock = Lock()
+        self._toplock = RLock()
 
         self.clock = Clock(self)
 
@@ -116,11 +117,12 @@ class Peer(object):
                 self._handleTextMessage(sender_peer_name,
                                         str(argdict['msg']))
             elif msgtype == "VOTE":
-                logging.debug("HANDLE VOTE")
+                logging.debug(self.name + "HANDLE VOTE")
                 self._forward_msg(msg_id, sender_peer_name, msgtype, argdict) # Forward
                 self._handleVote(argdict['song_name'],
                                  argdict['vote'])
             elif msgtype == "VOTES":
+                print("GOT VOTESLIST of " + str(argdict['song_name']))
                 self._handleVotes(str(argdict['song_name']),
                                   argdict['votes'])
             elif msgtype == "GETLIST":
@@ -147,17 +149,28 @@ class Peer(object):
                     (nextsong, _) = self._top[0]
 
                     # Clean up
+                    top3songs = []
                     for i in range(0, LOCK_TOP-1):
                         self._top[i] = self._top[i+1]
+                        if self._top[i]:
+                            (song, _) = self._top[i]
+                            top3songs.append(song)
                     self._top[LOCK_TOP-1] = None
+
+                    # Remove played song
+                    for playlistitem in self.playlist:
+                        if playlistitem['song_name'] == nextsong:
+                            self.playlist.remove(playlistitem)
+                            break
 
                     # Add new song to top
                     maxcnt = 0
                     maxsong = None
                     for playlistitem in self.playlist:
-                        if self._compare_songs((playlistitem['song_name'], len(playlistitem['votes'])), (maxsong, maxcnt)):
-                            maxcnt = len(playlistitem['votes'])
-                            maxsong = playlistitem['song_name']
+                        if not playlistitem['song_name'] in top3songs:
+                            if self._compare_songs((playlistitem['song_name'], len(playlistitem['votes'])), (maxsong, maxcnt)):
+                                maxcnt = len(playlistitem['votes'])
+                                maxsong = playlistitem['song_name']
                     if maxsong:
                         self._flush_top(maxsong, maxcnt)
 
@@ -182,6 +195,7 @@ class Peer(object):
             return False
 
     def _shout_votes(self, songName):
+        print("SHOUTING VOTES")
         for playlistitem in self.playlist:
             if playlistitem['song_name'] == songName:
                 self._send_msg("VOTES", {'song_name': songName, 'votes': playlistitem['votes']})

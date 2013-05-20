@@ -58,7 +58,9 @@ class PeerHandler(object):
             if "QUITTING" in line:
                 break
 
-
+    def clearBuffer(self):
+        with self.bufferlock:
+            self.buffer = deque(maxlen=self.BUFFER_SIZE)
 
 
     def setLocation(self, peerLoc):
@@ -94,7 +96,7 @@ class PeerHandler(object):
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
         line = self.expect_output("PLAYLIST#####")
-        line = line.replace("#LINEBREAK#", os.linesep).replace("PLAYLIST#####", "").strip()
+        line = line.replace("#LINEBREAK#", "\n").replace("PLAYLIST#####", "").strip()
         playlist = []
         for playlistitem in line.split("####"):
             if not playlistitem == "":
@@ -107,7 +109,7 @@ class PeerHandler(object):
                         for i in range(0,len(voteparams)-1,2):
                             votedict[voteparams[i]] = voteparams[i+1]
                         voteslst.append(votedict)
-                playlist.append({'song': song, 'votes': voteslst})
+                playlist.append({'song_name': song, 'votes': voteslst})
         return playlist
 
     def get_top3songs(self):
@@ -202,10 +204,10 @@ class PeerController():
         meY = peer.y
         for opeer in self.peers:
             if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
-                # if opeer.color:
-                #     print(opeer.name + '(' + opeer.color + ') is in range')
-                # else:
-                #     print(opeer.name + ' is in range')
+                #if opeer.color:
+                #    print(opeer.name + '(' + opeer.color + ') is in range')
+                #else:
+                #    print(opeer.name + ' is in range')
                 peersInRange.append(opeer)
 
         return peersInRange
