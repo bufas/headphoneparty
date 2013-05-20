@@ -113,10 +113,7 @@ class Peer(object):
             print("DROPPED MSG")
         else:
             print(txt)
-            if msgtype == "TXTMSG":
-                self._handleTextMessage(sender_peer_name,
-                                        str(argdict['msg']))
-            elif msgtype == "VOTE":
+            if msgtype == "VOTE":
                 logging.debug(self.name + "HANDLE VOTE")
                 self._forward_msg(msg_id, sender_peer_name, msgtype, argdict) # Forward
                 self._handleVote(argdict['song_name'],
@@ -222,15 +219,12 @@ class Peer(object):
                         self.hasJoined = True
                         self.playlist_request_id = None
 
-
-
-    def _handleTextMessage(self, sender_peer_name, msg):
-        logging.debug("Handling Text Message")
-
     def _handleVote(self, songName, vote):
         print("##################HANDLING VOTE###############")
         if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(songName, vote):
             self._addVote(songName, vote)
+        else:
+            print('VOTE REJECTED')
 
     def _handleVotes(self, songName, votes):
         # Merge votes
@@ -287,22 +281,20 @@ class Peer(object):
         return False
 
     def _addVote(self, songName, vote):
-        #Verify vote
-        if self._verifyVote(songName, vote):
-            # If exists
-            added = False
+        # If exists
+        added = False
 
-            for playlistitem in self.playlist:
-                if playlistitem['song_name'] == songName:
-                    if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
-                        # The vote is not in the list, add it
-                        playlistitem['votes'].append(vote)
-                        self._flush_top(songName, len(playlistitem['votes']))
-                    added = True
-                    break
-            if not added:
-                self.playlist.append({'song_name': songName, 'votes': [vote]})
-                self._flush_top(songName, 1)
+        for playlistitem in self.playlist:
+            if playlistitem['song_name'] == songName:
+                if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
+                    # The vote is not in the list, add it
+                    playlistitem['votes'].append(vote)
+                    self._flush_top(songName, len(playlistitem['votes']))
+                added = True
+                break
+        if not added:
+            self.playlist.append({'song_name': songName, 'votes': [vote]})
+            self._flush_top(songName, 1)
 
         print("VOTE ADDED")
 
@@ -354,7 +346,7 @@ class Peer(object):
         return {'peer_name': self.name,
                 'sig': str(self.key.signMessage(songName)),
                 'pk': self.key.getPublicKey(),
-                'pksign': str(self.key.getPksign())}
+                'pksign': self.key.getPksign()}
 
 
     def _forward_msg(self, msg_id, sender_peer_name, msgtype, argdict):
@@ -384,7 +376,7 @@ class Peer(object):
         params = {'song_name': songName,
                   'vote': vote,
                   'pk': self.key.getPublicKey(),
-                  'pksign': str(self.key.getPksign())}
+                  'pksign': self.key.getPksign()}
         self._send_msg("VOTE", params)
 
     def _print_songlist(self, prefix, songlist):
@@ -448,10 +440,10 @@ class Peer(object):
                 continue
             if "test_create_fake_vote":
                 songName = 'Justin Beaver'
-                fakeVote = {'peer_name': name,
+                fakeVote = {'peer_name': self.name,
                             'sig': str(self.key.signMessage(songName)),
                             'pk': self.key.getPublicKey(),
-                            'pksign': self.key.getPksign()}
+                            'pksign': '0'}
                 self._sendVote(songName, fakeVote)
                 continue
             print("Unknown command:", cmd)
