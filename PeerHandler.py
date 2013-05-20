@@ -8,12 +8,19 @@ from io import BufferedReader
 from collections import deque
 from threading import Lock
 import os
+from xmlrpc.client import ServerProxy
 
 VERBOSE = True  # Verbose true does not pipe stderr.
 ROUTER_HOST = "127.0.0.1"
 ROUTER_PORT = 8300
 
-class PeerHandler(object):
+class BasicPeerHandler(object):
+    def __init__(self, name, host, port):
+        self.name, self.host, self.port = name, host, port
+        self.x, self.y, self.vecX, self.vecY = None, None, None, None
+
+
+class PeerHandler(BasicPeerHandler):
     BUFFER_SIZE = 100
 
     def __init__(self, name, host, port, manualOverride, clockSync):
@@ -23,8 +30,10 @@ class PeerHandler(object):
         self.guiID = None
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
+        self.commlock = Lock()
+        self.killed = False
 
-        cmd = "python -u Peer.py %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
+        cmd = "python -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
@@ -62,6 +71,23 @@ class PeerHandler(object):
         with self.bufferlock:
             self.buffer = deque(maxlen=self.BUFFER_SIZE)
 
+    def sendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
+        send_msg_thread = threading.Thread(name="sendmsgthread", target=self._doSendMessage,
+                                           args=[immediate_sender_peer, msg_id, peer_name, msgtype, argdict])
+        send_msg_thread.setDaemon(True)  # Don't wait for thread to exit.
+        send_msg_thread.start()    
+
+    def _doSendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
+        with self.commlock:            
+            if not self.killed:
+                try:
+                    #print("\n\nINFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict) + "\n\n")
+                    serverProxy = ServerProxy('http://' + self.adr())
+                    serverProxy.ReceiveMsg(msg_id, peer_name, msgtype, argdict)
+                    #print("INFO: Message sent")
+                except ConnectionRefusedError:
+                    print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
+    
 
     def setLocation(self, peerLoc):
         (x, y, vecX, vecY) = peerLoc
@@ -131,19 +157,21 @@ class PeerHandler(object):
 
     def vote(self, song):
         self.write_to_stdin("vote "+song+"\n")
-        self.expect_output("VOTE ADDED", 2)
+        self.expect_output("VOTEOK", 2)
 
     def kill(self):
-        # Return code is None if process has not finished.
-        if self.process.returncode is None:
-            logging.warning("WARNING: " + self.name + " did not exit")
-            try:
-                self.communicate("q \n", 1)
-            except subprocess.TimeoutExpired:
-                logging.warning("WARNING: " + self.name + " could not exit (TIMEOUT) - FORCING!")
-        if self.process.returncode is None:  # If still not finished
-            self.process.kill()
-            self.process.wait()
+        with self.commlock:
+            self.killed = True
+            # Return code is None if process has not finished.
+            if self.process.returncode is None:
+                logging.warning("WARNING: " + self.name + " did not exit")
+                try:
+                    self.communicate("q \n", 3)
+                except subprocess.TimeoutExpired:
+                    logging.warning("WARNING: " + self.name + " could not exit (TIMEOUT) - FORCING!")
+            if self.process.returncode is None:  # If still not finished
+                self.process.kill()
+                self.process.wait()
 
     def communicate(self, msg, timeout=None):
         """Feeds msg to stdin, waits for peer to exit, and returns (stdout, stderr)."""
@@ -166,11 +194,28 @@ class PeerController():
 
     def __init__(self, peers, worldSize, topSpeed, maxSpeedChange, radioRange):
         self.peers = peers
+        self.peerLock = Lock()
         self.worldSize = worldSize
         self.TOP_SPEED, self.MAX_SPEED_CHANGE, self.RADIO_RANGE = topSpeed, maxSpeedChange, radioRange
 
         for peer in self.peers:
             peer.setLocation(self.generateNewPeerLocation())
+
+
+    def visualize(self, block=True, refresh=True):
+        if block:
+            self._do_visualize()
+        else:
+            thread = threading.Thread(name="visualize", target=self._do_visualize, args=[])
+            thread.start()
+
+    def _do_visualize(self):
+        self.visualizer = Visualizer(self.peers, self.peer_controller)
+
+        
+    def replacePeer(self, i, peer):
+        with self.peerLock:
+            self.peers[i] = peer
 
     def generateNewPeerLocation(self):
         x = random.uniform(0, self.worldSize['width'])          # x coord of peer spawn
@@ -180,40 +225,43 @@ class PeerController():
         return x, y, vecX, vecY
 
     def movePeers(self):
-        for peer in self.peers:
-            # Check the world bounds and flip the vector to avoid collision
-            if peer.x + peer.vecX > self.worldSize['width'] or peer.x + peer.vecX < 0:
-                peer.vecX = -peer.vecX
-            if peer.y + peer.vecY > self.worldSize['height'] or peer.y + peer.vecY < 0:
-                peer.vecY = -peer.vecY
+        with self.peerLock:
+            for peer in self.peers:
+                # Check the world bounds and flip the vector to avoid collision
+                if peer.x + peer.vecX > self.worldSize['width'] or peer.x + peer.vecX < 0:
+                    peer.vecX = -peer.vecX
+                if peer.y + peer.vecY > self.worldSize['height'] or peer.y + peer.vecY < 0:
+                    peer.vecY = -peer.vecY
 
-            # Move
-            peer.x += peer.vecX
-            peer.y += peer.vecY
+                # Move
+                peer.x += peer.vecX
+                peer.y += peer.vecY
 
-            # Change the vector to change speed and direction of peer
-            peer.vecX = random.uniform(
-                -self.TOP_SPEED if peer.vecX < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecX - self.MAX_SPEED_CHANGE,
-                self.TOP_SPEED if peer.vecX > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecX + self.MAX_SPEED_CHANGE)
-            peer.vecY = random.uniform(
-                -self.TOP_SPEED if peer.vecY < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecY - self.MAX_SPEED_CHANGE,
-                self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
+                # Change the vector to change speed and direction of peer
+                peer.vecX = random.uniform(
+                    -self.TOP_SPEED if peer.vecX < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecX - self.MAX_SPEED_CHANGE,
+                    self.TOP_SPEED if peer.vecX > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecX + self.MAX_SPEED_CHANGE)
+                peer.vecY = random.uniform(
+                    -self.TOP_SPEED if peer.vecY < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecY - self.MAX_SPEED_CHANGE,
+                    self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
 
     def findPeersInRange(self, peer):
-        # print()
-        # if peer.color:
-        #     print('Finding peers in range of ' + peer.name + '(' + peer.color + ')')
-        # else:
-        #     print('Finding peers in range of ' + peer.name)
-        peersInRange = []
-        meX = peer.x
-        meY = peer.y
-        for opeer in self.peers:
-            if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
-                #if opeer.color:
-                #    print(opeer.name + '(' + opeer.color + ') is in range')
-                #else:
-                #    print(opeer.name + ' is in range')
-                peersInRange.append(opeer)
+        with self.peerLock:
+            # print()
+            # if peer.color:
+            #     print('Finding peers in range of ' + peer.name + '(' + peer.color + ')')
+            # else:
+            #     print('Finding peers in range of ' + peer.name)
+            peersInRange = []
+            meX = peer.x
+            meY = peer.y
+            for opeer in self.peers:
+                if opeer:
+                    if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
+                        #if opeer.color:
+                            #    print(opeer.name + '(' + opeer.color + ') is in range')
+                        #else:
+                        #    print(opeer.name + ' is in range')
+                        peersInRange.append(opeer)
 
-        return peersInRange
+            return peersInRange

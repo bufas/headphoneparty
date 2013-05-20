@@ -22,10 +22,11 @@ OUT_OF_RANGE_TIME_LIMIT = 60 #secs
 LOCK_TOP = 3
 
 class Peer(object):
-    def __init__(self, name, host, port, driverHost, driverPort, manualOverride, clockSyncActive):
+    def __init__(self, register, name, host, port, routerHost, routerPort, manualOverride, clockSyncActive):
         self.name, self.host, self.port = name, host, port
-        self.driverHost, self.driverPort = driverHost, driverPort
+        self.routerHost, self.routerPort = routerHost, routerPort
         self.manualOverride, self.clockSyncActive = manualOverride, clockSyncActive
+        self.register = register
 
         # [{'song_name': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'sig': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'sig': '...', ...}]]
         self.playlist = []
@@ -53,7 +54,14 @@ class Peer(object):
 
         self.clock = Clock(self, sync=self.clockSyncActive)
 
+        self.progressLock = Lock()
+        self.quitting = False
+
     def start(self):
+        if self.register:
+            s = ServerProxy('http://' + self.routerHost + ':' + str(self.routerPort))
+            s.registerNewPeer()
+
         # Create server
         self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler, logRequests=False)
         self.rpc_server.register_introspection_functions()
@@ -104,16 +112,22 @@ class Peer(object):
             self._join() # Retry
 
     def ReceiveMsg(self, msg_id, sender_peer_name, msgtype, argdict):
+        if not self.quitting:
+            recv_handler_thread = threading.Thread(name="recvhandler", target=self._handle_recv_message,
+                                                   args=[msg_id, sender_peer_name, msgtype, argdict])
+            recv_handler_thread.start()            
+        return ''
+
+    def _handle_recv_message(self, msg_id, sender_peer_name, msgtype, argdict):
         # For some reason argdict values has turned into lists
         txt = self.name + ": GOTMSG of type " + msgtype + " from peer " + sender_peer_name + ": " + str(argdict)
         #logging.debug(txt)
         if self._shouldDropMsg(msg_id):
-            logging.debug("DROPPEDMSG")
             print("DROPPED MSG")
         else:
             print(txt)
             if msgtype == "VOTE":
-                logging.debug(self.name + "HANDLE VOTE")
+                #logging.debug(self.name + "HANDLE VOTE")
                 self._forward_msg(msg_id, sender_peer_name, msgtype, argdict) # Forward
                 self._handleVote(argdict['song_name'],
                                  argdict['vote'])
@@ -124,7 +138,6 @@ class Peer(object):
             elif msgtype == "GETLIST":
                 self._send_playlist(argdict['request_id'])
             elif msgtype == "PLAYLIST":
-                #logging.debug("PLAYLIST!")
                 print("GOT PLAYLIST")
                 self._handle_playlist(sender_peer_name,
                                       argdict['request_id'],
@@ -134,8 +147,7 @@ class Peer(object):
             elif msgtype == "CLOCKSYNC":
                 (t, s) = argdict['message']
                 self.clock.recv(t, s)
-        return ''
-
+                
     def _play_next(self):
         with self.playlistLock:
             with self._toplock:
@@ -277,22 +289,23 @@ class Peer(object):
         return False
 
     def _addVote(self, songName, vote):
-        # If exists
-        added = False
+        with self.playlistLock:
+            # If exists
+            added = False
 
-        for playlistitem in self.playlist:
-            if playlistitem['song_name'] == songName:
-                if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
-                    # The vote is not in the list, add it
-                    playlistitem['votes'].append(vote)
-                    self._flush_top(songName, len(playlistitem['votes']))
-                added = True
-                break
-        if not added:
-            self.playlist.append({'song_name': songName, 'votes': [vote]})
-            self._flush_top(songName, 1)
+            for playlistitem in self.playlist:
+                if playlistitem['song_name'] == songName:
+                    if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
+                        # The vote is not in the list, add it
+                        playlistitem['votes'].append(vote)
+                        self._flush_top(songName, len(playlistitem['votes']))
+                    added = True
+                    break
+            if not added:
+                self.playlist.append({'song_name': songName, 'votes': [vote]})
+                self._flush_top(songName, 1)
 
-        print("VOTE ADDED")
+            print("VOTE ADDED")
 
     def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
@@ -350,13 +363,14 @@ class Peer(object):
         return msg_id
 
     def _send_msg(self, msgtype, argdict):
-        thread = threading.Thread(name="forward", target=self._do_send_msg,
-                                  args=[self._gen_msg_id(), self.name, msgtype, argdict])
-        thread.start()
+        if not self.quitting:
+            thread = threading.Thread(name="forward", target=self._do_send_msg,
+                                      args=[self._gen_msg_id(), self.name, msgtype, argdict])
+            thread.start()
         return ''
 
     def _do_send_msg(self, msg_id, sender_peer_name, msgtype, argdict):
-        s = ServerProxy('http://' + self.driverHost + ':' + str(self.driverPort))
+        s = ServerProxy('http://' + self.routerHost + ':' + str(self.routerPort))
         s.forwardMessage(self.name, msg_id, sender_peer_name, msgtype, argdict)
 
     def _sendVote(self, songName, vote):
@@ -385,7 +399,9 @@ class Peer(object):
             cmd = sys.stdin.readline().strip()
             logging.debug(self.name + ": Read command: %s" % cmd)
             if "q" == cmd:
-                break
+                with self.progressLock:
+                    self.quitting = True
+                    break
             match = re.match(r'sendmsg (\S+)', cmd)
             if match:
                 msg = match.group(1)
@@ -397,6 +413,7 @@ class Peer(object):
                 vote = self._createVote(songName)
                 self._addVote(songName, vote)
                 self._sendVote(songName, vote)
+                print("VOTEOK")
                 continue
             if "join" == cmd:
                 self._join()
@@ -415,11 +432,8 @@ class Peer(object):
                 with self._toplock:
                     top3str = "TOP3SONGS###"
                     for top3item in self._top:
-                        logging.debug("AA")
                         if top3item:
-                            logging.debug("BB")
                             (song, votecnt) = top3item
-                            logging.debug("CC")
                             top3str += song + "#" + str(votecnt) + "##"
                     print(top3str)
                 continue
@@ -448,13 +462,14 @@ if __name__ == '__main__':
     # Setup logging to stderr.
     logging.basicConfig(level=logging.DEBUG, format='(%(threadName)-10s) %(message)s')
 
-    name = sys.argv[1]
-    host = sys.argv[2]
-    port = int(sys.argv[3])
-    driverHost = sys.argv[4]
-    driverPort = int(sys.argv[5])
-    manualOverride = (sys.argv[6] == "True")
-    clockSync = (sys.argv[7] == "True")
+    register = (sys.argv[1] == "register")
+    name = sys.argv[2]
+    host = sys.argv[3]
+    port = int(sys.argv[4])
+    routerHost = sys.argv[5]
+    routerPort = int(sys.argv[6])
+    manualOverride = (sys.argv[7] == "True")
+    clockSync = (sys.argv[8] == "True")
 
-    peer = Peer(name, host, port, driverHost, driverPort, manualOverride, clockSync)
+    peer = Peer(register, name, host, port, routerHost, routerPort, manualOverride, clockSync)
     peer.start()

@@ -1,6 +1,9 @@
+import sys
 import threading
 import time
 from xmlrpc.client import ServerProxy
+from PeerHandler import BasicPeerHandler
+from PeerHandler import PeerController
 from threading import Condition
 from threading import Lock
 from RpcHelper import RequestHandler, ThreadedXMLRPCServer
@@ -57,6 +60,7 @@ class Router:
 
         # Register RPC functions.
         self.rpc_server.register_function(self.forwardMessage)
+        self.rpc_server.register_function(self.registerNewPeer)
 
         server_thread = threading.Thread(name="server", target=self._server)
         server_thread.setDaemon(True)  # Don't wait for server thread to exit.
@@ -68,6 +72,10 @@ class Router:
 
     def shutdown(self):
         self.rpc_server.server_close()
+
+    def registerNewPeer(self):
+        print("HURRAY")
+        return ''
 
     # Peer name is the origin of the message
     def forwardMessage(self, immediate_sender, msg_id, peer_name, msgtype, argdict):
@@ -86,11 +94,12 @@ class Router:
         return ''
 
     def _server(self):
-        print('Starting driver on: %s:%s' % (self.host, self.port))
+        print('Starting router on: %s:%s' % (self.host, self.port))
         try:
             self.rpc_server.serve_forever()
         except ValueError:  # Thrown upon exit :(
             pass
+
 
     def _queue_handler(self):
         while True:
@@ -114,10 +123,48 @@ class Router:
         peersInRange = self.peer_controller.findPeersInRange(immediate_sender_peer)
         for peer in peersInRange:
             if peer != immediate_sender_peer:
-                try:
-                    #print("\n\nINFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict) + "\n\n")
-                    serverProxy = ServerProxy('http://' + peer.adr())
-                    serverProxy.ReceiveMsg(msg_id, peer_name, str(msgtype), argdict)
-                except ConnectionRefusedError:
-                    print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
-        #print("INFO: Message sent")
+                peer.sendMessage(immediate_sender_peer, msg_id, peer_name, str(msgtype), argdict)
+
+            
+
+
+    def _main_loop(self):
+        while True:
+            cmd = sys.stdin.readline().strip()
+            if "q" == cmd:
+                break
+            match = re.match(r'sendmsg (\S+)', cmd)
+            if match:
+                msg = match.group(1)
+                self._send_msg("TXTMSG", {'msg': msg})
+                continue
+            print("Unknown command:", cmd)        
+
+if __name__ == '__main__':
+    host = sys.argv[1]
+    port = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        visualize = (sys.argv[3] == "True")
+        worldwidth = int(sys.argv[4])
+        worldheight = int(sys.argv[5])
+        topSpeed = int(sys.argv[6])
+        maxSpeedChange = int(sys.argv[7])
+        radioRange = int(sys.argv[8])
+    else:
+        visualize = False
+        worldwidth, worldheight = 2000, 2000
+        topSpeed = 140
+        maxSpeedChange = 50
+        radioRange = 500
+
+    peers = []
+
+    peer_controller = PeerController(peers, {'width': worldwidth, 'height': worldheight}, topSpeed, maxSpeedChange, radioRange)
+    router = Router(host, port, peers, peer_controller, False)
+    router.start()
+    router.activate_queue()
+
+    if visualize:
+        peer_controller.visualize(block=False, refresh=True)
+
+    router._main_loop()
