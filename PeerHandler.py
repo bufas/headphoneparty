@@ -4,6 +4,7 @@ import random
 import math
 import time
 import threading
+from Visualizer import Visualizer 
 from io import BufferedReader
 from collections import deque
 from threading import Lock
@@ -18,20 +19,54 @@ class BasicPeerHandler(object):
     def __init__(self, name, host, port):
         self.name, self.host, self.port = name, host, port
         self.x, self.y, self.vecX, self.vecY = None, None, None, None
+        self.commlock = Lock()
+        self.killed = False
+        self.peer_controller = None
+        self.color = None
+        self.guiID = None
+
+    def setPeerController(self, peerController):
+        self.peer_controller = peerController
+
+    def setLocation(self, peerLoc):
+        (x, y, vecX, vecY) = peerLoc
+        self.x, self.y, self.vecX, self.vecY = x, y, vecX, vecY
+        if self.peer_controller:
+            self.peer_controller.revisualize()
+
+    def __str__(self):
+        return self.name
+
+    def adr(self):
+        return "%s:%d" % (self.host, self.port)
+
+    def sendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
+        send_msg_thread = threading.Thread(name="sendmsgthread", target=self._doSendMessage,
+                                           args=[immediate_sender_peer, msg_id, peer_name, msgtype, argdict])
+        send_msg_thread.setDaemon(True)  # Don't wait for thread to exit.
+        send_msg_thread.start()    
+
+    def _doSendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
+        with self.commlock:            
+            if not self.killed:
+                try:
+                    #print("\n\nINFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict) + "\n\n")
+                    serverProxy = ServerProxy('http://' + self.adr())
+                    serverProxy.ReceiveMsg(msg_id, peer_name, msgtype, argdict)
+                    #print("INFO: Message sent")
+                except ConnectionRefusedError:
+                    print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
+    
+
 
 
 class PeerHandler(BasicPeerHandler):
     BUFFER_SIZE = 100
 
     def __init__(self, name, host, port, manualOverride, clockSync):
-        self.name, self.host, self.port = name, host, port
-        self.x, self.y, self.vecX, self.vecY = None, None, None, None
-        self.color = None
-        self.guiID = None
+        BasicPeerHandler.__init__(self, name, host, port)
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
-        self.commlock = Lock()
-        self.killed = False
 
         cmd = "python -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
         if VERBOSE:
@@ -71,34 +106,7 @@ class PeerHandler(BasicPeerHandler):
         with self.bufferlock:
             self.buffer = deque(maxlen=self.BUFFER_SIZE)
 
-    def sendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
-        send_msg_thread = threading.Thread(name="sendmsgthread", target=self._doSendMessage,
-                                           args=[immediate_sender_peer, msg_id, peer_name, msgtype, argdict])
-        send_msg_thread.setDaemon(True)  # Don't wait for thread to exit.
-        send_msg_thread.start()    
-
-    def _doSendMessage(self, immediate_sender_peer, msg_id, peer_name, msgtype, argdict):
-        with self.commlock:            
-            if not self.killed:
-                try:
-                    #print("\n\nINFO: Sending Message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict) + "\n\n")
-                    serverProxy = ServerProxy('http://' + self.adr())
-                    serverProxy.ReceiveMsg(msg_id, peer_name, msgtype, argdict)
-                    #print("INFO: Message sent")
-                except ConnectionRefusedError:
-                    print("WARNING: Could not send message for " + immediate_sender_peer.name + " (" + str(msg_id) + ", " + str(peer_name) + ", " + str(msgtype) + ", " + str(argdict))
     
-
-    def setLocation(self, peerLoc):
-        (x, y, vecX, vecY) = peerLoc
-        self.x, self.y, self.vecX, self.vecY = x, y, vecX, vecY
-
-    def __str__(self):
-        return self.name
-
-    def adr(self):
-        return "%s:%d" % (self.host, self.port)
-
     def expect_output(self, msg, timeout=0):
         sleep_time = 0.05
         acc_sleep_time = 0
@@ -197,12 +205,31 @@ class PeerController():
         self.peerLock = Lock()
         self.worldSize = worldSize
         self.TOP_SPEED, self.MAX_SPEED_CHANGE, self.RADIO_RANGE = topSpeed, maxSpeedChange, radioRange
+        self.visualizer = None
 
         for peer in self.peers:
             peer.setLocation(self.generateNewPeerLocation())
+            peer.setPeerController(self)
+
+    def addPeer(self, peer):
+        self.peers.append(peer)
+        self.revisualize()
+
+    def removePeer(self, peer):
+        self.peers.remove(peer)
+        if self.visualizer:
+            self.visualizer.removePeer(peer)
+        self.revisualize()
+
+    def endVisualize(self):
+        self.visualizer.close = True
+
+    def revisualize(self):
+        if self.visualizer:
+            self.visualizer.redraw = True
 
 
-    def visualize(self, block=True, refresh=True):
+    def visualize(self, block=True):
         if block:
             self._do_visualize()
         else:
@@ -210,12 +237,17 @@ class PeerController():
             thread.start()
 
     def _do_visualize(self):
-        self.visualizer = Visualizer(self.peers, self.peer_controller)
+        self.visualizer = Visualizer(self.peers, self)
+        self.visualizer.visualize()
 
         
     def replacePeer(self, i, peer):
         with self.peerLock:
+            oldPeer = self.peers[i]
             self.peers[i] = peer
+        if self.visualizer:
+            self.visualizer.removePeer(oldPeer)
+        self.revisualize()
 
     def generateNewPeerLocation(self):
         x = random.uniform(0, self.worldSize['width'])          # x coord of peer spawn
@@ -244,6 +276,7 @@ class PeerController():
                 peer.vecY = random.uniform(
                     -self.TOP_SPEED if peer.vecY < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecY - self.MAX_SPEED_CHANGE,
                     self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
+        self.revisualize()
 
     def findPeersInRange(self, peer):
         with self.peerLock:

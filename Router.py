@@ -61,6 +61,7 @@ class Router:
         # Register RPC functions.
         self.rpc_server.register_function(self.forwardMessage)
         self.rpc_server.register_function(self.registerNewPeer)
+        self.rpc_server.register_function(self.leavePeer)
 
         server_thread = threading.Thread(name="server", target=self._server)
         server_thread.setDaemon(True)  # Don't wait for server thread to exit.
@@ -73,8 +74,20 @@ class Router:
     def shutdown(self):
         self.rpc_server.server_close()
 
-    def registerNewPeer(self):
-        print("HURRAY")
+    def registerNewPeer(self, name, host, port):
+        peer = BasicPeerHandler(name, host, port)
+        peer.setLocation(self.peer_controller.generateNewPeerLocation())
+        peer.setPeerController(self.peer_controller)
+        self.peer_controller.addPeer(peer)
+        print("Peer " + name + " joined")
+        return ''
+
+    def leavePeer(self, name):
+        for peer in self.peers:
+            if peer.name == name:
+                self.peer_controller.removePeer(peer)
+                print("Peer " + name + " left")
+                break
         return ''
 
     # Peer name is the origin of the message
@@ -133,10 +146,16 @@ class Router:
             cmd = sys.stdin.readline().strip()
             if "q" == cmd:
                 break
-            match = re.match(r'sendmsg (\S+)', cmd)
-            if match:
-                msg = match.group(1)
-                self._send_msg("TXTMSG", {'msg': msg})
+            if "setLocation " in cmd:
+                txt = cmd.replace("setLocation ", "").strip()
+                loc = txt.split(" ")
+                for p in self.peers:
+                    if p.name == loc[0]:
+                        p.setLocation((int(loc[1]), int(loc[2]), int(loc[3]), int(loc[4])))
+                        break
+                continue
+            if "movePeers" == cmd:
+                self.peer_controller.movePeers()
                 continue
             print("Unknown command:", cmd)        
 
@@ -165,6 +184,6 @@ if __name__ == '__main__':
     router.activate_queue()
 
     if visualize:
-        peer_controller.visualize(block=False, refresh=True)
+        peer_controller.visualize(block=False)
 
     router._main_loop()

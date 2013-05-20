@@ -32,6 +32,10 @@ class Peer(object):
         self.playlist = []
         self.playlistLock = Lock()
 
+        self.progressLock = Lock()
+        self.quitting = False
+
+
         keydist = KeyDistributer()
         self.key = keydist.getKeyPair()
 
@@ -54,13 +58,11 @@ class Peer(object):
 
         self.clock = Clock(self, sync=self.clockSyncActive)
 
-        self.progressLock = Lock()
-        self.quitting = False
 
     def start(self):
         if self.register:
             s = ServerProxy('http://' + self.routerHost + ':' + str(self.routerPort))
-            s.registerNewPeer()
+            s.registerNewPeer(self.name, self.host, self.port)
 
         # Create server
         self.rpc_server = ThreadedXMLRPCServer((self.host, self.port), requestHandler=RequestHandler, logRequests=False)
@@ -141,9 +143,7 @@ class Peer(object):
                 print("GOT PLAYLIST")
                 self._handle_playlist(sender_peer_name,
                                       argdict['request_id'],
-                                      argdict['playlist'],
-                                      argdict['pk'],
-                                      argdict['pksign'])
+                                      argdict['playlist'])
             elif msgtype == "CLOCKSYNC":
                 (t, s) = argdict['message']
                 self.clock.recv(t, s)
@@ -209,15 +209,13 @@ class Peer(object):
 
     def _send_playlist(self, request_id):
         params = {'request_id': request_id,
-                  'playlist': self.playlist,
-                  'pk': self.key.getPublicKey(),
-                  'pksign': self.key.getPksign()}
+                  'playlist': self.playlist}
         self._send_msg("PLAYLIST", params)
 
-    def _handle_playlist(self, sender_peer_name, request_id, playlist, pk, pksign):
+    def _handle_playlist(self, sender_peer_name, request_id, playlist):
         #TODO: Improve verification of playlist
         if self.playlist_request_id:
-            if self._verifyPK(pk, pksign) and self._verifyPlaylist(playlist, pk):
+            if self._verifyPlaylist(playlist):
                 if self.playlist_request_id == request_id:
                     #logging.debug("A")
                     self._updatePlaylist(playlist)
@@ -333,7 +331,7 @@ class Peer(object):
     def _verifyVote(self, songName, vote):
         return self.key.verifyMessage(vote['pk'], songName, vote['sig']) and self._verifyPK(vote['pk'], vote['pksign'])
 
-    def _verifyPlaylist(self, playlist, pk):
+    def _verifyPlaylist(self, playlist):
         # Run through all votes for all songs and verify them
         for songDescripter in playlist:
             for vote in songDescripter['votes']:
@@ -448,6 +446,10 @@ class Peer(object):
             if "get_logical_clock" == cmd:
                 print("LOGICALCLOCK#" + str(self.clock.getLogical()))
                 continue
+            if "leave" == cmd:
+                s = ServerProxy('http://' + self.routerHost + ':' + str(self.routerPort))
+                s.leavePeer(self.name)
+                break
             print("Unknown command:", cmd)
 
     def _server(self):
