@@ -1,7 +1,7 @@
+import random
 import tkinter as tk
 import threading
 import time
-from threading import Lock
 
 class Visualizer(tk.Frame):
     colors = ['black', 'magenta', 'red', 'blue', 'green', 'gray', 'orange', 'DeepPink', 'Tan', 'Navy']
@@ -23,7 +23,7 @@ class Visualizer(tk.Frame):
 
         tk.Button(self, text='Move', command=self.buttonAction).pack()
         tk.Button(self, text='Who can first peer reach?',
-                  command=lambda: self.peer_controller.findPeersInRange(self.peers[0])).pack()
+                  command=lambda: self.peer_controller.findPeersInRangeOutputToTerm(self.peers[0])).pack()
         self.canvas = tk.Canvas(self, width=canvasWidth, height=canvasHeight)
 
         self.pack()
