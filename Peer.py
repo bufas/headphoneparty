@@ -132,8 +132,9 @@ class Peer(object):
                                       argdict['pk'],
                                       argdict['pksign'])
             elif msgtype == "CLOCKSYNC":
-                (t, s) = argdict['message']
-                self.clock.recv(t, s)
+                self.clock.recv(int(argdict['t']),
+                                int(argdict['s']),
+                                sender_peer_name)
         return ''
 
     def _play_next(self):
@@ -434,7 +435,9 @@ class Peer(object):
                 self._sendVote(songName, fakeVote)
                 continue
             if "get_logical_clock" == cmd:
-                print("LOGICALCLOCK#" + str(self.clock.getLogical()))
+                logical = self.clock.getLogical()
+                logging.debug(self.name + ' LOGICAL CLOCK ' + str(logical))
+                print("LOGICALCLOCK#" + str(logical))
                 continue
             print("Unknown command:", cmd)
 

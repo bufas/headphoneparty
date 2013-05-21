@@ -97,24 +97,18 @@ class P2PTestCase(unittest.TestCase):
 
 
 class ClockTest(P2PTestCase):
-    NO_OF_PEERS = 25
+    NO_OF_PEERS = 2
     CLOCK_SYNC = True
+    RADIO_RANGE = 500000000
 
     def test_clock(self):
-        min = 2**64
-        max = -9999
+        time.sleep(10)
 
-        time.sleep(60)
+        logicals = [p.get_logicalClock() for p in self.peers]
+        self.assertGreaterEqual(50, max(logicals)-min(logicals), 'The clocks drifted too far apart')
 
-        for p in self.peers:
-            logical = p.get_logicalClock()
-            if logical < min:
-                min = logical
-            if logical > max:
-                max = logical
-
-        self.assertGreaterEqual(50, max-min, "The clocks drifted too far apart")
-
+        for peer in self.peers:
+            peer.communicate("q \n")
 
 class SimpleVisualTest(P2PTestCase):
     NO_OF_PEERS = 10
