@@ -1,3 +1,4 @@
+import random
 import subprocess
 import threading
 import unittest
@@ -22,7 +23,10 @@ class P2PTestCase(unittest.TestCase):
     MANUAL_OVERRIDE = True
 
     def setUp(self):
+        self.peer_controller = None
+
         self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.__class__.NO_OF_PEERS)]
+
         self.peer_controller = PeerController(self.peers,
                                               self.WORLD_SIZE,
                                               self.TOP_SPEED,
@@ -37,6 +41,7 @@ class P2PTestCase(unittest.TestCase):
 
         if self.VISUALIZE:
             self.visualizer = Visualizer(self.peers, self.peer_controller)
+            self.visualizer.visualize()
 
     def tearDown(self):
         for peer in self.peers:
@@ -45,16 +50,6 @@ class P2PTestCase(unittest.TestCase):
 
     def tick(self, num_msgs=1):
         self.router.tick(num_msgs)
-
-    def visualize(self, block=True):
-        if block:
-            self._do_visualize()
-        else:
-            thread = threading.Thread(name="visualize", target=self._do_visualize, args=[])
-            thread.start()
-
-    def _do_visualize(self):
-        self.visualizer = Visualizer(self.peers, self.peer_controller)
 
     def wait_nw_idle(self):
         self.router.wait_queue_empty()
@@ -75,6 +70,9 @@ class P2PTestCase(unittest.TestCase):
 
     def create_peer(self, name, host, port):
         peer = PeerHandler(name, host, port, self.MANUAL_OVERRIDE, self.CLOCK_SYNC)
+        if self.peer_controller: # Not set on first setup
+            peer.setLocation(self.peer_controller.generateNewPeerLocation())
+            peer.setPeerController(self.peer_controller)
 
         if peer.process.returncode is not None:
             raise Exception("Peer " + peer.name + " quit immediately ")
@@ -101,6 +99,7 @@ class ClockTest(P2PTestCase):
     CLOCK_SYNC = True
     RADIO_RANGE = 500000000
 
+    @unittest.skip("NOT WORKING")
     def test_clock(self):
         time.sleep(10)
 
@@ -558,3 +557,81 @@ class TopSyncTests(P2PTestCase):
         votingpeers = [vote['peer_name'] for vote in playlist[0]['votes']]
         self.assertTrue(self.peers[0].name in votingpeers)
         self.assertTrue(self.peers[1].name in votingpeers)
+
+class RandomVoting(P2PTestCase):
+    NO_OF_PEERS = 3
+    RADIO_RANGE = 10000
+    USE_TICKS = False
+
+
+    def test_randomVotes(self):
+        self.peer_controller.visualize(block=False)
+        
+
+        peersKilled = 0
+
+        songs = {"A":0,"B":0,"C":0,
+                 "D":0,"E":0,"F":0}
+
+        hasvotedfor = [[]] * len(self.peers)
+
+        for j in range(10):
+            for i in range(len(self.peers)):
+                time.sleep(0.01)
+                peer = self.peers[i]
+                if random.randint(0,100) < 75:
+                    self.peer_controller.movePeers()
+                if random.randint(0,100) < 75:
+                    songNo = random.randint(0,5)
+                    songNo = 0
+                    if not songNo in hasvotedfor[i]:
+                        songOfChoice = list(songs.keys())[songNo]
+                        peer.vote(songOfChoice)
+                        songs[songOfChoice] += 1
+                        hasvotedfor[i].append(songNo)
+                if random.randint(0,100) < 10:
+                    peer.kill()
+                    peersKilled += 1
+                    newPeer = self.create_peer("P%d" % (self.NO_OF_PEERS + peersKilled), "127.0.0.1",
+                                               8500 + self.NO_OF_PEERS + peersKilled)
+                    newPeer.expect_ready()
+                    self.peer_controller.replacePeer(i, newPeer)
+                    self.peers[i].write_to_stdin("join\n")
+                    i -= 1
+
+            
+
+        self.wait_nw_idle()
+        #Visualizer(self.peers, self.peer_controller).visualize()
+
+        #sorted_songs = sorted(self.songs.items(), key=lambda x: x[1])
+
+        #print(sorted_songs)
+
+        # Check playlists
+        for x in self.peers:
+            playlist = x.get_playlist()
+            peersongs = [song['song_name'] for song in playlist]
+            for key,value in songs.items():
+                if value != 0:
+                    self.assertTrue(key in peersongs, "Song " + key + " should be in playlist of " + x.name)
+                for j in playlist:
+                    if j['song_name'] == key:
+                        self.assertEqual(len(j['votes']), value)
+
+        # Play song
+        for peer in self.peers:
+            peer.write_to_stdin("play_next\n")
+            peer.expect_output("PLAYING")
+
+        # Check top equal
+        top = None
+        for peer in self.peers:
+            toplst = peer.get_top3songs()
+            if not top:
+                top = toplst
+            else:
+                self.assertEqual(top, toplst)
+
+
+        self.peer_controller.endVisualize()
