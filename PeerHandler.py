@@ -107,7 +107,7 @@ class PeerHandler(BasicPeerHandler):
             self.buffer = deque(maxlen=self.BUFFER_SIZE)
 
     
-    def expect_output(self, msg, timeout=0):
+    def expect_output(self, msg, timeout=0, altmsgs=[]):
         sleep_time = 0.05
         acc_sleep_time = 0
         while True:
@@ -119,7 +119,7 @@ class PeerHandler(BasicPeerHandler):
                 time.sleep(sleep_time)
                 acc_sleep_time += sleep_time
             else:
-                if msg in line:
+                if msg in line or (True in [altmsg in line for altmsg in altmsgs]):
                     return line
             if 0 < timeout <= acc_sleep_time:
                 raise subprocess.TimeoutExpired(msg, timeout)
@@ -165,7 +165,7 @@ class PeerHandler(BasicPeerHandler):
 
     def vote(self, song):
         self.write_to_stdin("vote "+song+"\n")
-        self.expect_output("VOTEOK", 2)
+        self.expect_output("VOTEOK", 10)
 
     def kill(self):
         with self.commlock:
@@ -200,7 +200,12 @@ class PeerController():
     """The purpose of the class is to emulate a physical space to test range and effect of wireless communication.
     Average walking speed will be 1.4, which corresponds to 5 km/h. Maximal speed in this configuration is 7.12km/h"""
 
-    def __init__(self, peers, worldSize, topSpeed, maxSpeedChange, radioRange):
+    def __init__(self, peers, worldSize, topSpeed, maxSpeedChange, radioRange, rand_seed = None):
+        if not rand_seed:
+            rand_seed = random.randint(0,9999999999)
+
+        self.myRandom = random.Random(rand_seed)
+
         self.peers = peers
         self.peerLock = Lock()
         self.worldSize = worldSize
@@ -250,10 +255,10 @@ class PeerController():
         self.revisualize()
 
     def generateNewPeerLocation(self):
-        x = random.uniform(0, self.worldSize['width'])          # x coord of peer spawn
-        y = random.uniform(0, self.worldSize['height'])         # y coord of peer spawn
-        vecX = random.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # x coord of peer speed vector
-        vecY = random.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # y coord of peer speed vector
+        x = self.myRandom.uniform(0, self.worldSize['width'])          # x coord of peer spawn
+        y = self.myRandom.uniform(0, self.worldSize['height'])         # y coord of peer spawn
+        vecX = self.myRandom.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # x coord of peer speed vector
+        vecY = self.myRandom.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # y coord of peer speed vector
         return x, y, vecX, vecY
 
     def movePeers(self):
@@ -270,10 +275,10 @@ class PeerController():
                 peer.y += peer.vecY
 
                 # Change the vector to change speed and direction of peer
-                peer.vecX = random.uniform(
+                peer.vecX = self.myRandom.uniform(
                     -self.TOP_SPEED if peer.vecX < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecX - self.MAX_SPEED_CHANGE,
                     self.TOP_SPEED if peer.vecX > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecX + self.MAX_SPEED_CHANGE)
-                peer.vecY = random.uniform(
+                peer.vecY = self.myRandom.uniform(
                     -self.TOP_SPEED if peer.vecY < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecY - self.MAX_SPEED_CHANGE,
                     self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
         self.revisualize()

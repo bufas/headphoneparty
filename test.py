@@ -7,6 +7,7 @@ from PeerHandler import PeerController
 from PeerHandler import PeerHandler
 from Router import Router
 from Visualizer import Visualizer
+from operator import itemgetter, attrgetter
 import time
 
 class P2PTestCase(unittest.TestCase):
@@ -23,6 +24,11 @@ class P2PTestCase(unittest.TestCase):
     MANUAL_OVERRIDE = True
 
     def setUp(self):
+        self.autoseed = random.randint(0,9999999999)
+        self.seed = 2080896176
+        self.myRandom = random.Random(self.seed)
+
+
         self.peer_controller = None
 
         self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.__class__.NO_OF_PEERS)]
@@ -31,7 +37,8 @@ class P2PTestCase(unittest.TestCase):
                                               self.WORLD_SIZE,
                                               self.TOP_SPEED,
                                               self.MAX_SPEED_CHANGE,
-                                              self.RADIO_RANGE)
+                                              self.RADIO_RANGE,
+                                              rand_seed=self.seed)
 
         #Start router
         self.router = Router("127.0.0.1", 8300, self.peers, self.peer_controller, self.USE_TICKS)
@@ -47,6 +54,8 @@ class P2PTestCase(unittest.TestCase):
         for peer in self.peers:
             peer.kill()
         self.router.shutdown()
+
+        #print("SEED: " + str(self.seed))
 
     def tick(self, num_msgs=1):
         self.router.tick(num_msgs)
@@ -561,79 +570,162 @@ class TopSyncTests(P2PTestCase):
         self.assertTrue(self.peers[1].name in votingpeers)
 
 class RandomVoting(P2PTestCase):
-    NO_OF_PEERS = 10
-    RADIO_RANGE = 10000
+    # Comment values says the value tested with seed 2080896176
+    NO_OF_PEERS = 25 #25
+    RADIO_RANGE = 600 #600
     USE_TICKS = False
+    TOP_SPEED = 75 #75
 
 
     def test_randomVotes(self):
+
         self.peer_controller.visualize(block=False)
         
 
         peersKilled = 0
+        peers_wasoutofrange = []
 
         songs = {"A":0,"B":0,"C":0,
-                 "D":0,"E":0,"F":0}
+                 "D":0,"E":0,"F":0} #A-F
 
-        hasvotedfor = [[]] * len(self.peers)
+        hasvotedfor = {}
 
-        for j in range(10):
-            for i in range(len(self.peers)):
-                time.sleep(0.01)
-                peer = self.peers[i]
-                if random.randint(0,100) < 75:
-                    self.peer_controller.movePeers()
-                if random.randint(0,100) < 75:
-                    songNo = random.randint(0,5)
-                    songNo = 0
-                    if not songNo in hasvotedfor[i]:
-                        songOfChoice = list(songs.keys())[songNo]
-                        peer.vote(songOfChoice)
-                        songs[songOfChoice] += 1
-                        hasvotedfor[i].append(songNo)
-                if random.randint(0,100) < 10:
-                    peer.kill()
-                    peersKilled += 1
-                    newPeer = self.create_peer("P%d" % (self.NO_OF_PEERS + peersKilled), "127.0.0.1",
-                                               8500 + self.NO_OF_PEERS + peersKilled)
-                    newPeer.expect_ready()
-                    self.peer_controller.replacePeer(i, newPeer)
-                    self.peers[i].write_to_stdin("join\n")
-                    i -= 1
+        lastBiggestConnectedSet = None
+        for j in range(100): # 100
+            time.sleep(0.05) # 0.05
 
-            
+            peeridx = self.myRandom.randint(0,len(self.peers)-1)
+            peer = self.peers[peeridx]
+
+            if j > 0 and self.myRandom.randint(0,100) < 60: # 60, Not first time - need out of range check first
+                self.peer_controller.movePeers()
+            if self.myRandom.randint(0,100) < 15: #15
+                if not peer.name in hasvotedfor.keys():
+                    hasvotedfor[peer.name] = []
+                songNo = self.myRandom.randint(0,5)
+                if not songNo in hasvotedfor[peer.name]:
+                    songOfChoice = list(songs.keys())[songNo]
+                    peer.vote(songOfChoice)
+                    songs[songOfChoice] += 1
+                    hasvotedfor[peer.name].append(songNo)
+            if self.myRandom.randint(0,100) < 5: #5
+                peer.kill()
+                peersKilled += 1
+                newPeer = self.create_peer("P%d" % (self.NO_OF_PEERS + peersKilled), "127.0.0.1",
+                                           8500 + self.NO_OF_PEERS + peersKilled)
+                newPeer.expect_ready()
+                self.peer_controller.replacePeer(peeridx, newPeer)
+                self.peers[peeridx].write_to_stdin("join\n")
+                    
+            # Out of range check
+            settosearch = lastBiggestConnectedSet
+            if not settosearch:
+                settosearch = self.peers
+            biggestConnectedSet = []
+            for p in settosearch:
+                reachable = [p]
+                cont = True
+                while cont:
+                    cont = False
+                    for rp in reachable:
+                        for pinrange in self.peer_controller.findPeersInRange(rp):
+                            if not pinrange in reachable:
+                                reachable.append(pinrange)
+                                cont = True
+                if len(reachable) > len(biggestConnectedSet):
+                    biggestConnectedSet = reachable
+            self.lastBiggestConnectedSet = biggestConnectedSet
+            for p in self.peers:
+                if (not p in biggestConnectedSet) and (not p in peers_wasoutofrange):
+                    peers_wasoutofrange.append(p)
+                    
 
         self.wait_nw_idle()
-        #Visualizer(self.peers, self.peer_controller).visualize()
+        for p in peers_wasoutofrange:
+            if p in self.peers and len(self.peer_controller.findPeersInRange(p)) > 1:
+                p.write_to_stdin("join\n")
+                try:
+                    p.expect_output("GOT PLAYLIST", 2)
+                except Exception:
+                    pass
+        self.wait_nw_idle()
+        #time.sleep(60)
 
-        #sorted_songs = sorted(self.songs.items(), key=lambda x: x[1])
+        peersinrange = []
+        peersoutofrange = []
+        for p in self.peers:
+            if not p in peers_wasoutofrange:
+                peersinrange.append(p.name)
+            else:
+                peersoutofrange.append(p.name)
+        print("PEERS IN RANGE " + str(peersinrange))
+        print("PEERS OUT OF RANGE " + str(peersoutofrange))            
+        #time.sleep(7)
 
-        #print(sorted_songs)
 
         # Check playlists
+        # Disabled: Since no out-of-range sync is done on the rest of the playlist, we cannot make sure it is in sync
+        # However, we can say that peers that has always been in range of each other should have identical playlists
+        syncedplaylist = None
         for x in self.peers:
-            playlist = x.get_playlist()
-            peersongs = [song['song_name'] for song in playlist]
-            for key,value in songs.items():
-                if value != 0:
-                    self.assertTrue(key in peersongs, "Song " + key + " should be in playlist of " + x.name)
-                for j in playlist:
-                    if j['song_name'] == key:
-                        self.assertEqual(len(j['votes']), value)
+            if not x in peers_wasoutofrange:
+                playlist = [(song['song_name'], len(song['votes'])) for song in x.get_playlist()]
+                playlist = sorted(playlist, key=itemgetter(1, 0))
+                if not syncedplaylist:
+                    syncedplaylist = playlist
+                else:
+                    self.assertEqual(syncedplaylist, playlist)
+
+                # Check that playlist equal to votes given - as explained, this cannot be done since voting peers might be out of range
+                #peersongs = [song['song_name'] for song in playlist]
+                #for key,value in songs.items():
+                #    if value != 0:
+                #        self.assertTrue(key in peersongs, "Song " + key + " should be in playlist of " + x.name)
+                #    for j in playlist:
+                #        if j['song_name'] == key:
+                #            self.assertEqual(len(j['votes']), value)
 
         # Play song
         for peer in self.peers:
             peer.write_to_stdin("play_next\n")
-            peer.expect_output("PLAYING")
+            peer.expect_output("PLAYING", 60, altmsgs=["NOTHING"]) # Long timeout, to allow for long queues
 
-        # Check top equal
-        top = None
+
+        def check_top_equal(peerlst):
+            top = None
+            for peer in peerlst:
+                toplst = peer.get_top3songs()
+                if not top:
+                    top = toplst
+                else:
+                    self.assertEqual(top, toplst)
+
+        peerstotest = [p for p in self.peers]
+        connsets = []
+        while len(peerstotest) > 0:
+            centerpeer = peerstotest.pop(0)
+            inrange = [centerpeer]
+            changed = True
+            while changed:
+                changed = False
+                for p in inrange:
+                    r = self.peer_controller.findPeersInRange(p)
+                    for rp in r:
+                        if not rp in inrange:
+                            changed = True
+                            inrange.append(rp)
+                        if rp in peerstotest:
+                            peerstotest.remove(rp)
+            connsets.append(inrange)
+            check_top_equal(inrange)
+
+        print("CONNECTED SETS")
+        for connset in connsets:
+            print(str([p.name for p in connset]))
+
+        #time.sleep(7)
+
         for peer in self.peers:
-            toplst = peer.get_top3songs()
-            if not top:
-                top = toplst
-            else:
-                self.assertEqual(top, toplst)
+            peer.communicate("q \n")
 
-
-        self.peer_controller.endVisualize()
+        #self.peer_controller.endVisualize()
