@@ -63,7 +63,7 @@ class BasicPeerHandler(object):
 class PeerHandler(BasicPeerHandler):
     BUFFER_SIZE = 100
 
-    def __init__(self, name, host, port, manualOverride, clockSync):
+    def __init__(self, name, host, port, manualOverride=True, clockSync=False):
         BasicPeerHandler.__init__(self, name, host, port)
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
@@ -297,4 +297,24 @@ class PeerController():
                         #    print(opeer.name + ' is in range')
                         peersInRange.append(opeer)
 
+            return peersInRange
+
+    def findPeersInRangeOutputToTerm(self, peer):
+        with self.peerLock:
+            print()
+            if peer.color:
+                print('Finding peers in range of ' + peer.name + '(' + peer.color + ')')
+            else:
+                print('Finding peers in range of ' + peer.name)
+            peersInRange = []
+            meX = peer.x
+            meY = peer.y
+            for opeer in self.peers:
+                if opeer:
+                    if math.pow(meX - opeer.x, 2) + math.pow(meY - opeer.y, 2) < math.pow(self.RADIO_RANGE, 2):
+                        if opeer.color:
+                            print(opeer.name + '(' + opeer.color + ') is in range')
+                        else:
+                            print(opeer.name + ' is in range')
+                        peersInRange.append(opeer)
             return peersInRange
