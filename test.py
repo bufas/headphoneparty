@@ -95,15 +95,17 @@ class P2PTestCase(unittest.TestCase):
 
 
 class ClockTest(P2PTestCase):
-    NO_OF_PEERS = 2
+    NO_OF_PEERS = 10
     CLOCK_SYNC = True
     RADIO_RANGE = 500000000
 
-    @unittest.skip("NOT WORKING")
     def test_clock(self):
         time.sleep(10)
 
-        logicals = [p.get_logicalClock() for p in self.peers]
+        t = time.time() * 1000
+        logicals = []
+        for p in self.peers:
+            logicals.append((p.get_logicalClock() - (time.time() * 1000 - t)))
         self.assertGreaterEqual(50, max(logicals)-min(logicals), 'The clocks drifted too far apart')
 
         for peer in self.peers:
@@ -559,7 +561,7 @@ class TopSyncTests(P2PTestCase):
         self.assertTrue(self.peers[1].name in votingpeers)
 
 class RandomVoting(P2PTestCase):
-    NO_OF_PEERS = 3
+    NO_OF_PEERS = 10
     RADIO_RANGE = 10000
     USE_TICKS = False
 
