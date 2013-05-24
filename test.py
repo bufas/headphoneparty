@@ -22,6 +22,7 @@ class P2PTestCase(unittest.TestCase):
     CLOCK_SYNC = False
     MANUAL_OVERRIDE = True
     RAND_SEED = None
+    
 
     def setUp(self):
         self.autoseed = random.randint(0,9999999999)
@@ -33,7 +34,7 @@ class P2PTestCase(unittest.TestCase):
 
         self.peer_controller = None
 
-        self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.__class__.NO_OF_PEERS)]
+        self.peers = [self.create_peer("P%d" % i, "127.0.0.1", 8500 + i) for i in range(self.NO_OF_PEERS)]
 
         self.peer_controller = PeerController(self.peers,
                                               self.WORLD_SIZE,
@@ -51,6 +52,7 @@ class P2PTestCase(unittest.TestCase):
         if self.VISUALIZE:
             self.visualizer = Visualizer(self.peers, self.peer_controller)
             self.visualizer.visualize()
+
 
     def tearDown(self):
         for peer in self.peers:
@@ -91,7 +93,7 @@ class P2PTestCase(unittest.TestCase):
 
     def ensure_peers_ready(self, peers):
         for peer in peers:
-            peer.expect_ready()
+            peer.expect_ready(20)
 
     def has_song_with_votes_in_playlist(self, playlist, song):
         for playlistitem in playlist:

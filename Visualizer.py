@@ -36,6 +36,7 @@ class Visualizer(tk.Frame):
 
 
         self.mainloop()
+        print("END")
 
 
     def _closeWin(self):

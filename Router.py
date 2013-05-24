@@ -22,10 +22,34 @@ class Router:
         self.peer_can_send = {}
         self.queue_was_empty = False
         self.queue_active = False
+        self.statlock = Lock()
+
+        self.msgshandled = 0
+        self.msgsize = 0
+        self.msgtypecnt = {}
 
         # Init for ticks
         for peer in self.peers:
             self.peer_can_send[peer.name] = 0
+
+    def stats(self):
+        msgtypes = ""
+        for (msgtype, cnt) in self.msgtypecnt.items():
+            msgtypes += msgtype + ": " + str(cnt) + "\n"
+        return "TOTAL MESSAGES: " + str(self.msgshandled) + "\n" + \
+               "DATA SIZE: " + str(self.msgsize) + "\n" + \
+               "--MSG TYPES-- \n" + \
+               msgtypes + "\n------------\n"
+
+    def get_msgcnt(self):
+        return self.msgshandled
+    
+    def get_msgsize(self):
+        return self.msgsize
+    
+    def get_msgtypecnt(self):
+        return self.msgtypecnt
+
 
     def activate_queue(self):
         with self.msg_lock:
@@ -92,6 +116,12 @@ class Router:
 
     # Peer name is the origin of the message
     def forwardMessage(self, immediate_sender, msg_id, peer_name, msgtype, argdict):
+        with self.statlock:
+            self.msgshandled += 1
+            self.msgsize += sys.getsizeof(argdict)
+            if not msgtype in self.msgtypecnt:
+                self.msgtypecnt[msgtype] = 0
+            self.msgtypecnt[msgtype] += 1
         #Find peer
         #TODO: IMPROVE
         immediate_sender_peer = None

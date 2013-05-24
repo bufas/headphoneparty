@@ -12,31 +12,53 @@ class RandomVoting(P2PTestCase):
     RADIO_RANGE = 600 #600
     USE_TICKS = False
     TOP_SPEED = 75 #75
+    MAX_SPEED_CHANGE = 50 #50
     RAND_SEED = 2080896176 # 2080896176
+    SIM_ROUNDS = 100 # 100
+    SIM_SLEEP = 0.05 # 0.05
+    SIM_VOTE_PROB = 15 # 15
+    SIM_MOVE_PROB = 60 # 60
+    SIM_KILL_PROB = 5 # 5
+
+    details = ""
+
+    #Pure stats
+    stat_peersKilledCnt = 0
+    stat_peersInRangeCnt = 0
+    stat_peersOutOfRangeCnt = 0
+    stat_songVotes = None
+    stat_connSetsCnt = 0
+    
+    force_visualize = True
+    starttime, endtime = None, None
 
     def test_randomVotes(self):
 
-        self.peer_controller.visualize(block=False)
-        
+        if self.force_visualize:
+            self.peer_controller.visualize(block=False)
+
+
+        self.starttime = time.time()
 
         peersKilled = 0
         peers_wasoutofrange = []
 
         songs = {"A":0,"B":0,"C":0,
                  "D":0,"E":0,"F":0} #A-F
+        self.stat_songVotes = songs
 
         hasvotedfor = {}
 
         lastBiggestConnectedSet = None
-        for j in range(100): # 100
-            time.sleep(0.05) # 0.05
+        for j in range(self.SIM_ROUNDS):
+            time.sleep(self.SIM_SLEEP)
 
             peeridx = self.myRandom.randint(0,len(self.peers)-1)
             peer = self.peers[peeridx]
 
-            if j > 0 and self.myRandom.randint(0,100) < 60: # 60, Not first time - need out of range check first
+            if j > 0 and self.myRandom.randint(0,100) < self.SIM_MOVE_PROB: # Not first time - need out of range check first
                 self.peer_controller.movePeers()
-            if self.myRandom.randint(0,100) < 15: #15
+            if self.myRandom.randint(0,100) < self.SIM_VOTE_PROB:
                 if not peer.name in hasvotedfor.keys():
                     hasvotedfor[peer.name] = []
                 songNo = self.myRandom.randint(0,5)
@@ -45,12 +67,13 @@ class RandomVoting(P2PTestCase):
                     peer.vote(songOfChoice)
                     songs[songOfChoice] += 1
                     hasvotedfor[peer.name].append(songNo)
-            if self.myRandom.randint(0,100) < 5: #5
+            if self.myRandom.randint(0,100) < self.SIM_KILL_PROB:
                 peer.kill()
                 peersKilled += 1
+                self.stat_peersKilledCnt += 1
                 newPeer = self.create_peer("P%d" % (self.NO_OF_PEERS + peersKilled), "127.0.0.1",
                                            8500 + self.NO_OF_PEERS + peersKilled)
-                newPeer.expect_ready()
+                newPeer.expect_ready(20)
                 self.peer_controller.replacePeer(peeridx, newPeer)
                 self.peers[peeridx].write_to_stdin("join\n")
                     
@@ -82,11 +105,16 @@ class RandomVoting(P2PTestCase):
             if p in self.peers and len(self.peer_controller.findPeersInRange(p)) > 1:
                 p.write_to_stdin("join\n")
                 try:
-                    p.expect_output("GOT PLAYLIST", 2)
+                    p.expect_output("GOT PLAYLIST", 60)
                 except Exception:
                     pass
         self.wait_nw_idle()
         #time.sleep(60)
+
+        self.details += "SONGS: " + str(sorted(songs)) + "\n" + \
+                        "PEERSKILLED: " + str(peersKilled) + "\n"
+
+        self.stat_songVotes = songs
 
         peersinrange = []
         peersoutofrange = []
@@ -95,8 +123,13 @@ class RandomVoting(P2PTestCase):
                 peersinrange.append(p.name)
             else:
                 peersoutofrange.append(p.name)
+        self.stat_peersInRangeCnt = len(peersinrange)
+        self.stat_peersOutOfRangeCnt = len(peersoutofrange)
         print("PEERS IN RANGE " + str(peersinrange))
-        print("PEERS OUT OF RANGE " + str(peersoutofrange))            
+        print("PEERS OUT OF RANGE " + str(peersoutofrange)) 
+
+        self.details += "PEERS IN RANGE: " + str(peersinrange) + "\n"
+        self.details += "PEERS OUT OF RANGE: " + str(peersoutofrange) + "\n"
         #time.sleep(7)
 
 
@@ -125,7 +158,11 @@ class RandomVoting(P2PTestCase):
         # Play song
         for peer in self.peers:
             peer.write_to_stdin("play_next\n")
-            peer.expect_output("PLAYING", 60, altmsgs=["NOTHING"]) # Long timeout, to allow for long queues
+            playing = peer.expect_output("PLAYING", 60, altmsgs=["NOTHING"]) # Long timeout, to allow for long queues
+            self.details += peer.name + " PLAYS: " + playing.strip() + "\n"
+            if "PLAYING" in playing:
+                playtop = peer.expect_output("TOP", 60)
+                self.details += peer.name + " TOP: " + playtop.strip() + "\n"
 
 
         def check_top_equal(peerlst):
@@ -157,9 +194,17 @@ class RandomVoting(P2PTestCase):
             check_top_equal(inrange)
 
         print("CONNECTED SETS")
+        self.details += "--CONNECTED SETS--\n"
         for connset in connsets:
-            print(str([p.name for p in connset]))
+            connstr = str([p.name for p in connset])
+            print(connstr)
+            self.details += connstr + "\n"
+        self.details += "\n"
+        self.stat_connSetsCnt = len(connsets)
+
+        self.endtime = time.time()
 
         #time.sleep(7)
 
-        #self.peer_controller.endVisualize()
+        #if self.force_visualize:
+            #self.peer_controller.endVisualize()

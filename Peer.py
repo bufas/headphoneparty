@@ -200,6 +200,7 @@ class Peer(object):
                     self.songplaying = nextsong
                     logging.debug(str(self._top))
                     print(playtxt)
+                    print("TOP " + str(self._top))
 
 
     def _addMsgId(self, msg_id):
@@ -421,6 +422,7 @@ class Peer(object):
 
     def _main_loop(self):
         while True:
+
             cmd = sys.stdin.readline().strip()
             logging.debug(self.name + ": Read command: %s" % cmd)
             if "q" == cmd:

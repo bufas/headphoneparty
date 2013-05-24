@@ -72,13 +72,13 @@ class PeerHandler(BasicPeerHandler):
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
-                                            shell=True,
+                                            shell=False,
                                             stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE)
         else:
             # Pipe to stderr
             self.process = subprocess.Popen(cmd,
-                                            shell=True,
+                                            shell=False,
                                             stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE,
                                             stderr=subprocess.PIPE)
@@ -92,7 +92,10 @@ class PeerHandler(BasicPeerHandler):
         while True:
             line = self.process.stdout.readline()
             if not line:
-                raise Exception(self.name + " stdout closed while waiting for output")
+                if self.killed:
+                    break
+                else:
+                    raise Exception(self.name + " stdout closed while waiting for output")
             line = line.decode("utf-8")
             with self.bufferlock:
                 self.buffer.append(line)
@@ -124,8 +127,11 @@ class PeerHandler(BasicPeerHandler):
             if 0 < timeout <= acc_sleep_time:
                 raise subprocess.TimeoutExpired(msg, timeout)
 
-    def expect_ready(self):
-        self.expect_output("ready")
+    def expect_ready(self, timeout = None):
+        if not timeout:
+            self.expect_output("ready")
+        else:
+            self.expect_output("ready", timeout)
 
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
@@ -177,9 +183,11 @@ class PeerHandler(BasicPeerHandler):
                     self.communicate("q \n", 3)
                 except subprocess.TimeoutExpired:
                     logging.warning("WARNING: " + self.name + " could not exit (TIMEOUT) - FORCING!")
-            if self.process.returncode is None:  # If still not finished
-                self.process.kill()
-                self.process.wait()
+                    try:
+                        self.process.kill()
+                        self.process.wait()
+                    except Exception:
+                        logging.warning("WARNING: Could not terminate peer")
 
     def communicate(self, msg, timeout=None):
         """Feeds msg to stdin, waits for peer to exit, and returns (stdout, stderr)."""
@@ -239,6 +247,7 @@ class PeerController():
             self._do_visualize()
         else:
             thread = threading.Thread(name="visualize", target=self._do_visualize, args=[])
+            thread.setDaemon(True)
             thread.start()
 
     def _do_visualize(self):
