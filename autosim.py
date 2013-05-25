@@ -223,8 +223,8 @@ for test in tests:
             if ok:
                 write_logs(param, str(paramval) + "-OK", timestamp, "OK\n\n" + \
                                "EXECTIME: " + str(exectime) + " secs\n" + \
-                               "--------- PARAMS ----------\n" + paramsstr + \
-                               "--------- STATS ----------\n" + stats + \
+                               "\n--------- PARAMS ----------\n" + paramsstr + \
+                               "\n\n--------- STATS ----------\n" + stats + \
                                "\n\n-------- RUN DETAILS ----------\n" + details)
             else:
                 failMsg = "FAIL"
@@ -232,7 +232,9 @@ for test in tests:
                     failMsg = "TIMEOUT"
                 write_logs(param, str(paramval) + "-" + failMsg, timestamp, failMsg + "\n\n" + \
                                "EXECTIME: " + str(exectime) + " secs\n" + \
-                               "--------- STATS ----------\n" + stats + \
+                               "\n--------- PARAMS ----------\n" + paramsstr + \
+                               "\n\n--------- STATS ----------\n" + stats + \
+                               "\n\n-------- RUN DETAILS ----------\n" + details + \
                                "\n\n--------- ERRORS ---------\n" + tracebackString(errors) + \
                                "\n\n--------- FAILURES ---------\n" + tracebackString(failures) + \
                                "\n\n--------- UNEXPECTED SUCCESSES ---------\n" + tracebackString(unexpectSucc))
