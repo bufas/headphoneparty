@@ -129,9 +129,20 @@ for test in tests:
             endtime = time.time()
 
             ok = testresult.wasSuccessful()
+            reason = ""
+            if not ok:
+                if not sim.toplstinsync and not sim.playlistinsync:
+                    reason = "(TOPLIST,PLAYLIST)"
+                elif not sim.toplstinsync:
+                    reason = "(TOPLIST)"
+                elif not sim.playlistinsync:
+                    reason = "(PLAYLIST)"
             errors = testresult.errors
             failures = testresult.failures
             unexpectSucc = testresult.unexpectedSuccesses
+            if ("AssertionError: Lists differ" in tracebackString(failures)) and \
+               ("GOTMSG" in tracebackString(failures)):
+                reason = "(PROTOCOL)"
 
             if ok:
                 pureexectime = (sim.endtime - sim.starttime)
@@ -191,7 +202,7 @@ for test in tests:
             if timeoutocc:
                 roundcsvrow += "TIMEOUT;"
             else:
-                roundcsvrow += str(ok) + ";"
+                roundcsvrow += str(ok) + " " + reason + ";"
             roundcsvrow += str(exectime).replace(".", ",") + ";" + \
                            str(msgcnt) + ";" + \
                            str(msgsize) + ";"
@@ -230,7 +241,7 @@ for test in tests:
                 failMsg = "FAIL"
                 if timeoutocc:
                     failMsg = "TIMEOUT"
-                write_logs(param, str(paramval) + "-" + failMsg, timestamp, failMsg + "\n\n" + \
+                write_logs(param, str(paramval) + "-" + failMsg, timestamp, failMsg + " " + reason + "\n\n" + \
                                "EXECTIME: " + str(exectime) + " secs\n" + \
                                "\n--------- PARAMS ----------\n" + paramsstr + \
                                "\n\n--------- STATS ----------\n" + stats + \

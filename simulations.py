@@ -31,6 +31,10 @@ class RandomVoting(P2PTestCase):
     
     force_visualize = True
     starttime, endtime = None, None
+    playlistinsync = True
+    toplstinsync = True
+    topequalFail = (None, None)
+    plequalFail = (None, None)
 
     def test_randomVotes(self):
 
@@ -110,8 +114,13 @@ class RandomVoting(P2PTestCase):
                     pass
         self.wait_nw_idle()
         #time.sleep(60)
+        
+        songsstr = "["
+        for (asong, avotecnt) in songs.items():
+            songsstr += asong + ": " + str(avotecnt) + ","
+        songsstr += "]"
 
-        self.details += "SONGS: " + str(sorted(songs)) + "\n" + \
+        self.details += "SONGS: " + songsstr + "\n" + \
                         "PEERSKILLED: " + str(peersKilled) + "\n"
 
         self.stat_songVotes = songs
@@ -144,7 +153,10 @@ class RandomVoting(P2PTestCase):
                 if not syncedplaylist:
                     syncedplaylist = playlist
                 else:
-                    self.assertEqual(syncedplaylist, playlist)
+                    if syncedplaylist != playlist:
+                        self.plequalFail = (syncedplaylist, playlist)
+                        self.playlistinsync = False
+                        break
 
                 # Check that playlist equal to votes given - as explained, this cannot be done since voting peers might be out of range
                 #peersongs = [song['song_name'] for song in playlist]
@@ -172,7 +184,10 @@ class RandomVoting(P2PTestCase):
                 if not top:
                     top = toplst
                 else:
-                    self.assertEqual(top, toplst)
+                    if top != toplst:
+                        self.tlequalFail = (top, toplst)
+                        self.toplstinsync = False
+                        break
 
         peerstotest = [p for p in self.peers]
         connsets = []
@@ -205,6 +220,15 @@ class RandomVoting(P2PTestCase):
 
         for connset in connsets:
             check_top_equal(connset)
+            if not self.toplstinsync:
+                break
+
+        if not self.toplstinsync:
+            (tl1, tl2) = self.tlequalFail
+            self.assertEqual(tl1, tl2, "Toplists not in sync")
+        if not self.playlistinsync:
+            (pl1, pl2) = self.plequalFail
+            self.assertEqual(pl1, pl2, "Playlists not in sync")
 
         #time.sleep(7)
 
