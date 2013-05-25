@@ -94,7 +94,7 @@ for test in tests:
             testresult = sim.defaultTestResult()
 
             sim.force_visualize = False
-            #sim.RAND_SEED = None
+            sim.RAND_SEED = None
             sim.NO_OF_PEERS = DEFAULT_NO_OF_PEERS
             sim.RADIO_RANGE = DEFAULT_RADIO_RANGE
             sim.TOP_SPEED = DEFAULT_TOP_SPEED
