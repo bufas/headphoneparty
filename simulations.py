@@ -191,7 +191,6 @@ class RandomVoting(P2PTestCase):
                         if rp in peerstotest:
                             peerstotest.remove(rp)
             connsets.append(inrange)
-            check_top_equal(inrange)
 
         print("CONNECTED SETS")
         self.details += "--CONNECTED SETS--\n"
@@ -203,6 +202,9 @@ class RandomVoting(P2PTestCase):
         self.stat_connSetsCnt = len(connsets)
 
         self.endtime = time.time()
+
+        for connset in connsets:
+            check_top_equal(connset)
 
         #time.sleep(7)
 
