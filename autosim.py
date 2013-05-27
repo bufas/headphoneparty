@@ -62,8 +62,6 @@ tests = [('NO_OF_PEERS', 10, [1,2,3,5,10,20,25,30,40,50]),
          ('SIM_MOVE_PROB', 10, [5, 10, 25, 50, 100]),
          ('SIM_KILL_PROB', 10, [0, 5, 10, 20, 50, 75])]
 
-#tests = [('NO_OF_PEERS', 3, [2,3])]
-
 for test in tests:
     (param, rounds, paramvals) = test
 

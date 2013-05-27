@@ -135,7 +135,7 @@ class PeerHandler(BasicPeerHandler):
 
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
-        line = self.expect_output("PLAYLIST#####")
+        line = self.expect_output("PLAYLIST#####", 60)
         line = line.replace("#LINEBREAK#", "\n").replace("PLAYLIST#####", "").strip()
         playlist = []
         for playlistitem in line.split("####"):
@@ -154,7 +154,7 @@ class PeerHandler(BasicPeerHandler):
 
     def get_top3songs(self):
         self.write_to_stdin("get_top3songs\n")
-        line = self.expect_output("TOP3SONGS###")
+        line = self.expect_output("TOP3SONGS###", 60)
         line = line.replace("TOP3SONGS###", "").strip()
         top3 = []
         for songlistitem in line.split("##"):
@@ -165,7 +165,7 @@ class PeerHandler(BasicPeerHandler):
 
     def get_logicalClock(self):
         self.write_to_stdin("get_logical_clock\n")
-        line = self.expect_output("LOGICALCLOCK#")
+        line = self.expect_output("LOGICALCLOCK#", 60)
         clock = int(line.replace("LOGICALCLOCK#", "").strip())
         return clock
 
