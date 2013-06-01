@@ -68,17 +68,17 @@ class PeerHandler(BasicPeerHandler):
         self.buffer = deque(maxlen=self.BUFFER_SIZE)
         self.bufferlock = Lock()
 
-        cmd = "python3 -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
+        cmd = "python -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
         if VERBOSE:
             # Do not pipe stderr
             self.process = subprocess.Popen(cmd,
-                                            shell=True,
+                                            shell=False,
                                             stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE)
         else:
             # Pipe to stderr
             self.process = subprocess.Popen(cmd,
-                                            shell=True,
+                                            shell=False,
                                             stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE,
                                             stderr=subprocess.PIPE)
@@ -92,7 +92,10 @@ class PeerHandler(BasicPeerHandler):
         while True:
             line = self.process.stdout.readline()
             if not line:
-                raise Exception(self.name + " stdout closed while waiting for output")
+                if self.killed:
+                    break
+                else:
+                    raise Exception(self.name + " stdout closed while waiting for output")
             line = line.decode("utf-8")
             with self.bufferlock:
                 self.buffer.append(line)
@@ -107,7 +110,7 @@ class PeerHandler(BasicPeerHandler):
             self.buffer = deque(maxlen=self.BUFFER_SIZE)
 
     
-    def expect_output(self, msg, timeout=0):
+    def expect_output(self, msg, timeout=0, altmsgs=[]):
         sleep_time = 0.05
         acc_sleep_time = 0
         while True:
@@ -119,17 +122,20 @@ class PeerHandler(BasicPeerHandler):
                 time.sleep(sleep_time)
                 acc_sleep_time += sleep_time
             else:
-                if msg in line:
+                if msg in line or (True in [altmsg in line for altmsg in altmsgs]):
                     return line
             if 0 < timeout <= acc_sleep_time:
                 raise subprocess.TimeoutExpired(msg, timeout)
 
-    def expect_ready(self):
-        self.expect_output("ready")
+    def expect_ready(self, timeout = None):
+        if not timeout:
+            self.expect_output("ready")
+        else:
+            self.expect_output("ready", timeout)
 
     def get_playlist(self):
         self.write_to_stdin("get_playlist\n")
-        line = self.expect_output("PLAYLIST#####")
+        line = self.expect_output("PLAYLIST#####", 60)
         line = line.replace("#LINEBREAK#", "\n").replace("PLAYLIST#####", "").strip()
         playlist = []
         for playlistitem in line.split("####"):
@@ -148,7 +154,7 @@ class PeerHandler(BasicPeerHandler):
 
     def get_top3songs(self):
         self.write_to_stdin("get_top3songs\n")
-        line = self.expect_output("TOP3SONGS###")
+        line = self.expect_output("TOP3SONGS###", 60)
         line = line.replace("TOP3SONGS###", "").strip()
         top3 = []
         for songlistitem in line.split("##"):
@@ -159,13 +165,13 @@ class PeerHandler(BasicPeerHandler):
 
     def get_logicalClock(self):
         self.write_to_stdin("get_logical_clock\n")
-        line = self.expect_output("LOGICALCLOCK#")
+        line = self.expect_output("LOGICALCLOCK#", 60)
         clock = int(line.replace("LOGICALCLOCK#", "").strip())
         return clock
 
     def vote(self, song):
         self.write_to_stdin("vote "+song+"\n")
-        self.expect_output("VOTEOK", 2)
+        self.expect_output("VOTEOK", 10)
 
     def kill(self):
         with self.commlock:
@@ -177,9 +183,11 @@ class PeerHandler(BasicPeerHandler):
                     self.communicate("q \n", 3)
                 except subprocess.TimeoutExpired:
                     logging.warning("WARNING: " + self.name + " could not exit (TIMEOUT) - FORCING!")
-            if self.process.returncode is None:  # If still not finished
-                self.process.kill()
-                self.process.wait()
+                    try:
+                        self.process.kill()
+                        self.process.wait()
+                    except Exception:
+                        logging.warning("WARNING: Could not terminate peer")
 
     def communicate(self, msg, timeout=None):
         """Feeds msg to stdin, waits for peer to exit, and returns (stdout, stderr)."""
@@ -200,7 +208,12 @@ class PeerController():
     """The purpose of the class is to emulate a physical space to test range and effect of wireless communication.
     Average walking speed will be 1.4, which corresponds to 5 km/h. Maximal speed in this configuration is 7.12km/h"""
 
-    def __init__(self, peers, worldSize, topSpeed, maxSpeedChange, radioRange):
+    def __init__(self, peers, worldSize, topSpeed, maxSpeedChange, radioRange, rand_seed = None):
+        if not rand_seed:
+            rand_seed = random.randint(0,9999999999)
+
+        self.myRandom = random.Random(rand_seed)
+
         self.peers = peers
         self.peerLock = Lock()
         self.worldSize = worldSize
@@ -234,6 +247,7 @@ class PeerController():
             self._do_visualize()
         else:
             thread = threading.Thread(name="visualize", target=self._do_visualize, args=[])
+            thread.setDaemon(True)
             thread.start()
 
     def _do_visualize(self):
@@ -250,10 +264,10 @@ class PeerController():
         self.revisualize()
 
     def generateNewPeerLocation(self):
-        x = random.uniform(0, self.worldSize['width'])          # x coord of peer spawn
-        y = random.uniform(0, self.worldSize['height'])         # y coord of peer spawn
-        vecX = random.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # x coord of peer speed vector
-        vecY = random.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # y coord of peer speed vector
+        x = self.myRandom.uniform(0, self.worldSize['width'])          # x coord of peer spawn
+        y = self.myRandom.uniform(0, self.worldSize['height'])         # y coord of peer spawn
+        vecX = self.myRandom.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # x coord of peer speed vector
+        vecY = self.myRandom.uniform(-self.TOP_SPEED, self.TOP_SPEED)  # y coord of peer speed vector
         return x, y, vecX, vecY
 
     def movePeers(self):
@@ -270,10 +284,10 @@ class PeerController():
                 peer.y += peer.vecY
 
                 # Change the vector to change speed and direction of peer
-                peer.vecX = random.uniform(
+                peer.vecX = self.myRandom.uniform(
                     -self.TOP_SPEED if peer.vecX < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecX - self.MAX_SPEED_CHANGE,
                     self.TOP_SPEED if peer.vecX > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecX + self.MAX_SPEED_CHANGE)
-                peer.vecY = random.uniform(
+                peer.vecY = self.myRandom.uniform(
                     -self.TOP_SPEED if peer.vecY < -self.TOP_SPEED + self.MAX_SPEED_CHANGE else peer.vecY - self.MAX_SPEED_CHANGE,
                     self.TOP_SPEED if peer.vecY > self.TOP_SPEED - self.MAX_SPEED_CHANGE else peer.vecY + self.MAX_SPEED_CHANGE)
         self.revisualize()

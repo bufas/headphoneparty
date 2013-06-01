@@ -30,7 +30,9 @@ class Peer(object):
 
         # [{'song_name': 'Britney Spears - Toxic', 'votes': [{'peer_name': 'P1', 'sig': 'signature_on_song', 'pk': ..., 'pksign': ...}, {'peer_name': 'P2', 'sig': '...', ...}]]
         self.playlist = []
-        self.playlistLock = Lock()
+        self.playlistLock = RLock()
+        self.songplaying = None
+        self.firstJoin = True
 
         self.progressLock = Lock()
         self.quitting = False
@@ -97,6 +99,13 @@ class Peer(object):
 
 
     def _join(self):
+        if not self.firstJoin:
+            with self._toplock:
+                for topitem in self._top:
+                    if topitem:
+                        (song_name, _) = topitem
+                        self._shout_votes(song_name)
+        self.firstJoin = False
         self.playlists_received = 0
         self.playlist_request_id = self._gen_msg_id()
         self._send_msg("GETLIST", {'request_id': self.playlist_request_id})
@@ -134,6 +143,7 @@ class Peer(object):
                 self._handleVote(argdict['song_name'],
                                  argdict['vote'])
             elif msgtype == "VOTES":
+                #logging.debug("GOT VOTESLIST of " + str(argdict['song_name']))
                 print("GOT VOTESLIST of " + str(argdict['song_name']))
                 self._handleVotes(str(argdict['song_name']),
                                   argdict['votes'])
@@ -153,7 +163,9 @@ class Peer(object):
     def _play_next(self):
         with self.playlistLock:
             with self._toplock:
-                if self._top[0]:
+                if not self._top[0]:
+                    print("NOTHING TO PLAY")
+                else:
                     (nextsong, _) = self._top[0]
 
                     # Clean up
@@ -185,7 +197,10 @@ class Peer(object):
                     # Tell
                     playtxt = "PLAYING " + nextsong
                     logging.debug(playtxt)
+                    self.songplaying = nextsong
+                    logging.debug(str(self._top))
                     print(playtxt)
+                    print("TOP " + str(self._top))
 
 
     def _addMsgId(self, msg_id):
@@ -228,22 +243,28 @@ class Peer(object):
                         self.playlist_request_id = None
 
     def _handleVote(self, songName, vote):
-        print("##################HANDLING VOTE###############")
-        if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(songName, vote):
-            self._addVote(songName, vote)
-        else:
-            print('VOTE REJECTED')
+        with self.playlistLock:
+            if songName != self.songplaying: # Avoid same song being added immediatly again due to syncing
+                print("##################HANDLING VOTE###############")
+                if self._verifyPK(vote['pk'], vote['pksign']) and self._verifyVote(songName, vote):
+                    self._addVote(songName, vote)
+                else:
+                    print('VOTE REJECTED')
+                #logging.debug(self.name + "HANDLE VOTE from " + vote['peer_name'])
 
     def _handleVotes(self, songName, votes):
-        # Merge votes
-        for vote in votes:
-            self._addVote(songName, vote)
+        with self.playlistLock:
+            if songName != self.songplaying: # Avoid same song being added immediatly again due to syncing
+            # Merge votes
+                for vote in votes:
+                    self._addVote(songName, vote)
 
 
 
     def _flush_top(self, updated_song, new_vote_cnt):
         with self._toplock:
             inTop = False
+            updated = False
 
             for i in range(0, LOCK_TOP):
                 if self._top[i]:
@@ -251,29 +272,33 @@ class Peer(object):
                     if updated_song == songX:
                         inTop = True
                         self._top[i] = (songX, new_vote_cnt)
+                        if new_vote_cnt != votecntX:
+                            updated = True
                         break
             if not inTop:
-
                 if not self._top[LOCK_TOP-1]: # If not specified yet
                     #Find first empty position
                     for i in range(0,LOCK_TOP):
                         if not self._top[i]:
                             self._top[i] = (updated_song, new_vote_cnt)
+                            updated = True
                             break
                 else:
                     lastTopSongDesc = self._top[LOCK_TOP-1]
                     if self._compare_songs((updated_song, new_vote_cnt), lastTopSongDesc):
+                        updated = True
                         self._top[LOCK_TOP -1] = (updated_song, new_vote_cnt)
 
             # Update internally
-            for i in range(LOCK_TOP-1, 0, -1):
-                songdescX = self._top[i]
-                songdescY = self._top[i-1]
-                if self._compare_songs(songdescX, songdescY):
-                    self._top[i] = songdescY
-                    self._top[i-1] = songdescX
-            if not inTop: # => Must have been added
-                # Flush votes for new song in top X (vote sync)
+            if updated:
+                for i in range(LOCK_TOP-1, 0, -1):
+                    songdescX = self._top[i]
+                    songdescY = self._top[i-1]
+                    if self._compare_songs(songdescX, songdescY):
+                        self._top[i] = songdescY
+                        self._top[i-1] = songdescX
+            if updated:
+                # Flush votes for updated or new song in top X (vote sync)
                 self._shout_votes(updated_song)
 
     def _compare_songs(self, songdesc1, songdesc2):
@@ -290,22 +315,23 @@ class Peer(object):
 
     def _addVote(self, songName, vote):
         with self.playlistLock:
-            # If exists
-            added = False
+            if songName != self.songplaying:
+                # If exists
+                added = False
 
-            for playlistitem in self.playlist:
-                if playlistitem['song_name'] == songName:
-                    if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
-                        # The vote is not in the list, add it
-                        playlistitem['votes'].append(vote)
-                        self._flush_top(songName, len(playlistitem['votes']))
-                    added = True
-                    break
-            if not added:
-                self.playlist.append({'song_name': songName, 'votes': [vote]})
-                self._flush_top(songName, 1)
+                for playlistitem in self.playlist:
+                    if playlistitem['song_name'] == songName:
+                        if not vote['peer_name'] in [existingVote['peer_name'] for existingVote in playlistitem['votes']]:
+                            # The vote is not in the list, add it
+                            playlistitem['votes'].append(vote)
+                            self._flush_top(songName, len(playlistitem['votes']))
+                        added = True
+                        break
+                if not added:
+                    self.playlist.append({'song_name': songName, 'votes': [vote]})
+                    self._flush_top(songName, 1)
 
-            print("VOTE ADDED")
+                print("VOTE ADDED")
 
     def _updatePlaylist(self, recievedPlaylist):
         for song in recievedPlaylist:
@@ -396,6 +422,7 @@ class Peer(object):
 
     def _main_loop(self):
         while True:
+
             cmd = sys.stdin.readline().strip()
             logging.debug(self.name + ": Read command: %s" % cmd)
             if "q" == cmd:
