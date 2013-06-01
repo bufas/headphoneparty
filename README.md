@@ -1,12 +1,12 @@
 # headphoneparty
 
 ## Dependencies
-The program depends on [PyCrypto][https://www.dlitz.net/software/pycrypto/] which is a cryptography toolkit for python.
+The program depends on [PyCrypto](https://www.dlitz.net/software/pycrypto/) which is a cryptography toolkit for python.
 
 ## How to run unittests
 The unittests are located in a module named test.py and are written in the python unittest framework and are run the standard way.
 
-```python
+```
 python -m unittest test
 ```
 
@@ -29,7 +29,7 @@ Host and port are self explanatory. If visualize is set to True, the visualizer 
 
 Here is a few examples on how to start the router
 
-```python
+```
 # Do not use the visualizer
 python Router.py 127.0.0.1 8300
 # Use the visualizer
@@ -52,6 +52,6 @@ Register must be the string `register` or the peer will not register with the ro
 
 Here is an example on how to start a peer
 
-```python
+```
 python Peer.py register Peer1 127.0.0.1 8301 127.0.0.1 8300 False True
 ```
