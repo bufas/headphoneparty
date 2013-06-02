@@ -62,3 +62,15 @@ Here is an example on how to start a peer
 ```
 python -u Peer.py register Peer1 127.0.0.1 8301 127.0.0.1 8300 False True
 ```
+
+## How to run simulations
+In simulations.py a number of configuration values is defined which can be changed to simulate different behaviour. The simulations is written using the standard python unittesting framework and are run the following way
+```
+python -m unittest simulations.py
+```
+
+We have also implemented a benchmark script which can be configured to run a series of test and log the results hereof. In the autosim.py file a list variable called `tests` which is used to configure the number of simulations and the behaviour of the peers. The benchmark is run the following way
+```
+python autosim.py
+```
+The log files are stored in a folder called `logs`
