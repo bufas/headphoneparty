@@ -75,3 +75,6 @@ We have also implemented a benchmark script which can be configured to run a ser
 python autosim.py
 ```
 The log files are stored in a folder called `logs`. Note that the automatically gathered statistics include non-protocol errors in the success rates.
+
+## Automatic deployment
+Using spur (python2) we made a script `distributePeers.py` which will automatically starts peers onto different hosts. Due to privileges we could not install required libraries onto freshhorse machines, and therefore we have not been able to test if the script works.
