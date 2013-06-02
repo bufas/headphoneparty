@@ -60,5 +60,5 @@ Register must be the string `register` or the peer will not register with the ro
 Here is an example on how to start a peer
 
 ```
-python Peer.py register Peer1 127.0.0.1 8301 127.0.0.1 8300 False True
+python -u Peer.py register Peer1 127.0.0.1 8301 127.0.0.1 8300 False True
 ```
