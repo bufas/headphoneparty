@@ -1,16 +1,23 @@
 # headphoneparty
 
-## Dependencies
+### Dependencies
 The program depends on [PyCrypto](https://www.dlitz.net/software/pycrypto/) which is a cryptography toolkit for python.
 
-## How to run unittests
+### How to run unittests
 The unittests are located in a module named test.py and are written in the python unittest framework and are run the standard way.
 
 ```
 python -m unittest test
 ```
 
-## How to start the peers independently
+**Note** To run the tests, python 3 must be linked to `python` in your system path. On most unix systems, python 3 is linked to by `python3`. To run the tests, you need to relink python or change line 71 in `PeerHandler.py` the following way
+
+```diff
+-        cmd = "python -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
++        cmd = "python3 -u Peer.py nonregister %s %s %s %s %s %s %s" % (name, host, port, ROUTER_HOST, ROUTER_PORT, manualOverride, clockSync)
+```
+
+### How to start the peers independently
 Before you start any peer you need to start the router as it mediates all the message passing.
 
 #### Starting the router
