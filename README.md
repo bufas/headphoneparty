@@ -68,9 +68,10 @@ In simulations.py a number of configuration values is defined which can be chang
 ```
 python -m unittest simulations.py
 ```
+At the very top of the class, one can change the parameters for the simulation. Note that to repreduce possible errors, we have fixed the random seed in this single-simulation run. Set `RAND_SEED` to `None` to use clear the random seed.
 
-We have also implemented a benchmark script which can be configured to run a series of test and log the results hereof. In the autosim.py file a list variable called `tests` which is used to configure the number of simulations and the behaviour of the peers. The benchmark is run the following way
+We have also implemented a benchmark script which can be configured to run a series of test and log the results hereof. In the autosim.py file the `DEFAULT_` variables specify the default parameter values used during the simulations. A list variable called `tests` is used to vary the parameters used for the different simulations. The benchmark is run the following way
 ```
 python autosim.py
 ```
-The log files are stored in a folder called `logs`
+The log files are stored in a folder called `logs`. Note that the automatically gathered statistics include non-protocol errors in the success rates.

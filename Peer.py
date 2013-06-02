@@ -357,7 +357,7 @@ class Peer(object):
         return self.key.verifyPublicKey(pk, int(pksign))
 
     def _verifyVote(self, songName, vote):
-        return self.key.verifyMessage(vote['pk'], songName, vote['sig']) and self._verifyPK(vote['pk'], vote['pksign'])
+        return self.key.verifyMessage(vote['pk'], songName + vote['peer_name'], vote['sig']) and self._verifyPK(vote['pk'], vote['pksign'])
 
     def _verifyPlaylist(self, playlist):
         # Run through all votes for all songs and verify them
@@ -370,7 +370,7 @@ class Peer(object):
     def _createVote(self, songName):
         """Creates a vote for a specific song"""
         return {'peer_name': self.name,
-                'sig': str(self.key.signMessage(songName)),
+                'sig': str(self.key.signMessage(songName + self.name)),
                 'pk': self.key.getPublicKey(),
                 'pksign': self.key.getPksign()}
 

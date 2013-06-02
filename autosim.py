@@ -52,6 +52,7 @@ DEFAULT_SIM_KILL_PROB = 5
 msgtypes = sorted(["VOTE", "VOTES", "GETLIST", "PLAYLIST", "CLOCKSYNC"])
 songs = sorted(["A", "B", "C", "D", "E", "F"])
 
+# [('Test parameter to control', number_of_simulations, [parameter values])]
 tests = [('NO_OF_PEERS', 10, [1,2,3,5,10,20,25,30,40,50]),
          ('RADIO_RANGE', 10, [100,300,600,1000,1500,2000,999999]),
          ('TOP_SPEED', 10, [10,40,60,75,100,200]),
@@ -140,7 +141,7 @@ for test in tests:
             unexpectSucc = testresult.unexpectedSuccesses
             if ("AssertionError: Lists differ" in tracebackString(failures)) and \
                ("GOTMSG" in tracebackString(failures)):
-                reason = "(PROTOCOL)"
+                reason = "(NON PROTOCOL)"
 
             if ok:
                 pureexectime = (sim.endtime - sim.starttime)
