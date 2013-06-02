@@ -45,7 +45,7 @@ counter = 0
 for p in peers:
     result = p.wait_for_result()
     print('P'+str(counter))
-    print(result.output())
+    print(result.output)
     counter += 1
 
 
